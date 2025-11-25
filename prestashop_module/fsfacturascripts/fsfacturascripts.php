@@ -50,7 +50,8 @@ class FsFacturaScripts extends Module
         // Registrar hooks
         return $this->registerHook('actionOrderStatusPostUpdate') &&
                $this->registerHook('actionValidateOrder') &&
-               $this->registerHook('displayAdminOrderTop') &&
+               $this->registerHook('displayAdminOrder') &&
+               $this->registerHook('displayAdminOrderLeft') &&
                $this->registerHook('displayAdminOrdersListAfter') &&
                $this->registerHook('displayOrderDetail') &&
                $this->registerHook('displayCustomerAccount');
@@ -310,9 +311,9 @@ class FsFacturaScripts extends Module
     }
 
     /**
-     * Hook: Mostrar botón de descarga ARRIBA en ficha del pedido (admin)
+     * Hook: Mostrar botón de descarga en ficha del pedido (admin)
      */
-    public function hookDisplayAdminOrderTop($params)
+    public function hookDisplayAdminOrder($params)
     {
         $id_order = (int)$params['id_order'];
         $order = new Order($id_order);
@@ -334,6 +335,14 @@ class FsFacturaScripts extends Module
                 <i class="icon-download"></i> Descargar Factura
             </a>
         </div>';
+    }
+
+    /**
+     * Hook: Mostrar botón de descarga en lateral izquierdo del pedido (admin) - Backup
+     */
+    public function hookDisplayAdminOrderLeft($params)
+    {
+        return $this->hookDisplayAdminOrder($params);
     }
 
     /**
