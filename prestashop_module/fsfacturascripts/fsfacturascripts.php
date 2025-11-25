@@ -50,7 +50,7 @@ class FsFacturaScripts extends Module
         // Registrar hooks
         return $this->registerHook('actionOrderStatusPostUpdate') &&
                $this->registerHook('actionValidateOrder') &&
-               $this->registerHook('displayAdminOrder') &&
+               $this->registerHook('displayAdminOrderTop') &&
                $this->registerHook('displayAdminOrdersListAfter') &&
                $this->registerHook('displayOrderDetail') &&
                $this->registerHook('displayCustomerAccount');
@@ -310,9 +310,9 @@ class FsFacturaScripts extends Module
     }
 
     /**
-     * Hook: Mostrar botón de descarga en ficha del pedido (admin)
+     * Hook: Mostrar botón de descarga ARRIBA en ficha del pedido (admin)
      */
-    public function hookDisplayAdminOrder($params)
+    public function hookDisplayAdminOrderTop($params)
     {
         $id_order = (int)$params['id_order'];
         $order = new Order($id_order);
@@ -325,22 +325,14 @@ class FsFacturaScripts extends Module
 
         $factura_info = '';
         if ($fs_data && !empty($fs_data['fs_factura_code'])) {
-            $factura_info = '<p style="margin: 0 0 10px 0;"><strong>Factura:</strong> ' . pSQL($fs_data['fs_factura_code']) . '</p>';
+            $factura_info = '<strong style="font-size: 12px;">Factura:</strong> ' . pSQL($fs_data['fs_factura_code']) . ' | ';
         }
 
-        return '<div class="panel" style="margin-bottom: 15px;">
-            <div class="panel-heading" style="padding: 10px 15px;">
-                <i class="icon-file-pdf-o"></i> FacturaScripts
-            </div>
-            <div class="panel-body" style="padding: 15px;">
-                ' . $factura_info . '
-                <a href="' . $download_url . '" target="_blank" class="btn btn-primary btn-sm">
-                    <i class="icon-download"></i> Descargar Factura
-                </a>
-                <p style="margin: 10px 0 0 0; font-size: 11px; color: #999;">
-                    <i class="icon-info-circle"></i> Si la factura no existe aún, verás un mensaje de error.
-                </p>
-            </div>
+        return '<div class="alert alert-info" style="padding: 8px 12px; margin-bottom: 15px; font-size: 13px;">
+            <i class="icon-file-pdf-o"></i> <strong>FacturaScripts:</strong> ' . $factura_info . '
+            <a href="' . $download_url . '" target="_blank" class="btn btn-primary btn-xs" style="padding: 2px 8px; font-size: 11px;">
+                <i class="icon-download"></i> Descargar Factura
+            </a>
         </div>';
     }
 

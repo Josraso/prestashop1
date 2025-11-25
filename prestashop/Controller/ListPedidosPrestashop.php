@@ -25,6 +25,27 @@ class ListPedidosPrestashop extends Controller
     /** @var int */
     public $pendientes = 0;
 
+    /** @var int */
+    public $limit = 100;
+
+    /** @var int */
+    public $offset = 0;
+
+    /** @var int */
+    public $page = 1;
+
+    /** @var int */
+    public $totalPages = 1;
+
+    /** @var string */
+    public $filterDateFrom = '';
+
+    /** @var string */
+    public $filterDateTo = '';
+
+    /** @var int */
+    public $filterIdFrom = 0;
+
     public function getPageData(): array
     {
         $data = parent::getPageData();
@@ -37,6 +58,14 @@ class ListPedidosPrestashop extends Controller
     public function privateCore(&$response, $user, $permissions): void
     {
         parent::privateCore($response, $user, $permissions);
+
+        // Obtener filtros
+        $this->filterDateFrom = $this->request->query->get('date_from', '');
+        $this->filterDateTo = $this->request->query->get('date_to', '');
+        $this->filterIdFrom = (int)$this->request->query->get('id_from', 0);
+        $this->limit = (int)$this->request->query->get('limit', 100);
+        $this->page = (int)$this->request->query->get('page', 1);
+        $this->offset = ($this->page - 1) * $this->limit;
 
         $this->loadPedidos();
 
@@ -62,17 +91,55 @@ class ListPedidosPrestashop extends Controller
         try {
             $connection = new PrestashopConnection($config);
 
-            // Obtener últimos 100 pedidos
-            $ordersXml = $connection->getOrders(100);
+            // Construir filtros para la API de PrestaShop
+            $filters = [];
+
+            if (!empty($this->filterDateFrom)) {
+                $filters['date_add'] = '[' . $this->filterDateFrom . ',]';
+            }
+            if (!empty($this->filterDateTo)) {
+                if (isset($filters['date_add'])) {
+                    $filters['date_add'] = '[' . $this->filterDateFrom . ',' . $this->filterDateTo . ']';
+                } else {
+                    $filters['date_add'] = '[,' . $this->filterDateTo . ']';
+                }
+            }
+            if ($this->filterIdFrom > 0) {
+                $filters['id'] = '[' . $this->filterIdFrom . ',]';
+            }
+
+            // Obtener pedidos con filtros - usamos un límite grande para filtrar luego
+            $ordersXml = $connection->getOrders(500, $filters);
 
             if (!$ordersXml) {
                 Tools::log()->error('No se pudieron obtener pedidos de PrestaShop');
                 return;
             }
 
+            // Convertir a array y ordenar por ID DESC (más recientes primero)
+            $allOrders = [];
+            foreach ($ordersXml as $orderXml) {
+                $allOrders[] = $orderXml;
+            }
+
+            usort($allOrders, function($a, $b) {
+                return (int)$b->id - (int)$a->id;
+            });
+
+            // Calcular paginación
+            $this->totalPedidos = count($allOrders);
+            $this->totalPages = ceil($this->totalPedidos / $this->limit);
+
+            // Obtener solo la página actual
+            $ordersPage = array_slice($allOrders, $this->offset, $this->limit);
+
             $albaranModel = new AlbaranCliente();
 
-            foreach ($ordersXml as $orderXml) {
+            // Resetear contadores
+            $this->importados = 0;
+            $this->pendientes = 0;
+
+            foreach ($ordersPage as $orderXml) {
                 $orderId = (int)$orderXml->id;
                 $orderRef = (string)$orderXml->reference;
                 $customerId = (int)$orderXml->id_customer;

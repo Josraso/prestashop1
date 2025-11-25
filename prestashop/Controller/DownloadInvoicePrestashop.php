@@ -18,6 +18,40 @@ class DownloadInvoicePrestashop extends Controller
     {
         parent::publicCore($response);
 
+        // Si es GET, mostrar mensaje informativo
+        if ($this->request->getMethod() === 'GET') {
+            http_response_code(200);
+            header('Content-Type: text/html; charset=utf-8');
+            echo '<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Descarga Facturas - FacturaScripts</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+               min-height: 100vh; display: flex; align-items: center; justify-content: center; margin: 0; }
+        .container { background: white; border-radius: 16px; padding: 40px; max-width: 500px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        h1 { color: #333; margin: 0 0 10px 0; font-size: 24px; }
+        p { color: #666; line-height: 1.6; }
+        .info { background: #eff6ff; border-left: 4px solid #3b82f6; padding: 15px; border-radius: 4px; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📄 Descarga de Facturas</h1>
+        <p>Este es un endpoint público para descargar facturas PDF desde PrestaShop.</p>
+        <div class="info">
+            <strong>ℹ️ Uso:</strong><br>
+            <code>?token=XXX&order_ref=ABC123</code><br>
+            o<br>
+            <code>?token=XXX&invoice_id=456</code>
+        </div>
+    </div>
+</body>
+</html>';
+            die();
+        }
+
         // Validar token
         $token = $this->request->query->get('token', '');
         $config = PrestashopConfig::getActive();
