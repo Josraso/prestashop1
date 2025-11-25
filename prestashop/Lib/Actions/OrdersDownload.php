@@ -10,6 +10,7 @@ use FacturaScripts\Dinamic\Model\Producto;
 use FacturaScripts\Dinamic\Model\Variante;
 use FacturaScripts\Plugins\Prestashop\Lib\PrestashopConnection;
 use FacturaScripts\Plugins\Prestashop\Model\PrestashopConfig;
+use FacturaScripts\Plugins\Prestashop\Model\PrestashopImportLog;
 use FacturaScripts\Plugins\Prestashop\Model\PrestashopPaymentMap;
 use FacturaScripts\Plugins\Prestashop\Model\PrestashopTaxMap;
 
@@ -35,8 +36,10 @@ class OrdersDownload
 
     /**
      * Proceso batch para importar pedidos
+     *
+     * @param string $origen Origen de la importación (cron, manual, webhook)
      */
-    public function batch(): void
+    public function batch(string $origen = 'cron'): void
     {
         Tools::log()->info('[OrdersDownload::batch] Método batch() iniciado - VERSIÓN ACTUALIZADA 2025-11-25');
 
@@ -129,6 +132,7 @@ class OrdersDownload
                     // Filtro por fecha: Si está configurado, verificar fecha del ÚLTIMO ESTADO del pedido
                     if ($importSinceDate && $orderDate < $importSinceDate) {
                         Tools::log()->info("[OrdersDownload::batch] ⊘ OMITIDO POR FECHA: {$orderRef} (último estado: {$orderDate} < {$importSinceDate})");
+                        PrestashopImportLog::logSkipped($orderId, $orderRef, "Fecha del último estado ({$orderDate}) anterior a la configurada ({$importSinceDate})", $origen);
                         $skipped++; // Contar como omitido
                         continue;
                     }
@@ -136,23 +140,40 @@ class OrdersDownload
                     // Verificar si el pedido ya fue importado
                     if ($this->isOrderImported($orderRef)) {
                         Tools::log()->info("[OrdersDownload::batch] ⊘ YA IMPORTADO: {$orderRef}");
+                        PrestashopImportLog::logSkipped($orderId, $orderRef, "Pedido ya importado anteriormente", $origen);
                         $skipped++;
                         continue;
                     }
 
                     // Importar el pedido
                     Tools::log()->info("[OrdersDownload::batch] Importando pedido {$orderRef}...");
-                    if ($this->importOrder($orderXml)) {
+                    $albaranData = $this->importOrder($orderXml);
+                    if ($albaranData) {
                         $imported++;
                         Tools::log()->info("[OrdersDownload::batch] ✓ Pedido {$orderRef} importado correctamente");
+
+                        // Registrar importación exitosa
+                        PrestashopImportLog::logSuccess(
+                            $orderId,
+                            $orderRef,
+                            $albaranData['idalbaran'],
+                            $albaranData['codcliente'],
+                            $albaranData['nombrecliente'],
+                            $albaranData['total'],
+                            $origen
+                        );
                     } else {
                         Tools::log()->warning("[OrdersDownload::batch] Pedido {$orderRef} no se pudo importar (puede ya existir)");
+                        PrestashopImportLog::logSkipped($orderId, $orderRef, "No se pudo importar (posiblemente ya existe)", $origen);
                     }
                 } catch (\Exception $e) {
                     $errors++;
                     $errorMsg = "Error importando pedido {$orderRef} (ID: {$orderId}): " . $e->getMessage();
                     Tools::log()->error($errorMsg);
                     $this->logError($errorMsg);
+
+                    // Registrar error en log de importaciones
+                    PrestashopImportLog::logError($orderId, $orderRef, $e->getMessage(), $origen);
                 }
             }
 
@@ -212,8 +233,10 @@ class OrdersDownload
 
     /**
      * Importa un pedido individual como albarán
+     *
+     * @return array|null Array con datos del albarán si se importó correctamente, null si falló
      */
-    private function importOrder(\SimpleXMLElement $orderXml): bool
+    private function importOrder(\SimpleXMLElement $orderXml): ?array
     {
         $orderId = (int)$orderXml->id;
         $orderReference = (string)$orderXml->reference;
@@ -237,7 +260,7 @@ class OrdersDownload
         // Verificar si ya existe un albarán con este número de pedido en numero2
         if ($this->albaranExists($orderReference)) {
             Tools::log()->debug("⊘ Albarán ya importado: {$orderReference}");
-            return false;
+            return null;
         }
 
         // Obtener o crear cliente usando la dirección de facturación del pedido
@@ -261,6 +284,10 @@ class OrdersDownload
         if (!$cliente) {
             throw new \Exception("No se pudo obtener o crear el cliente para el pedido {$orderId}");
         }
+
+        // Guardar datos del cliente para el log
+        $codcliente = $cliente->codcliente;
+        $nombrecliente = $cliente->nombre;
 
         // Crear albarán
         $albaran = new AlbaranCliente();
@@ -417,7 +444,14 @@ class OrdersDownload
         Tools::log()->info("✓ ALBARÁN CREADO: {$albaran->codigo}");
         Tools::log()->info("  Neto: {$albaran->neto}€ | IVA: {$albaran->totaliva}€ | TOTAL: {$albaran->total}€");
         Tools::log()->info("========================================");
-        return true;
+
+        // Devolver datos del albarán para el log
+        return [
+            'idalbaran' => $albaran->idalbaran,
+            'codcliente' => $codcliente,
+            'nombrecliente' => $nombrecliente,
+            'total' => $albaran->total
+        ];
     }
 
     /**
