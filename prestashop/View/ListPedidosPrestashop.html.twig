@@ -1,0 +1,193 @@
+{% extends "Master/MenuTemplate.html.twig" %}
+
+{% block body %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="h3 mb-3">
+                <i class="fas fa-shopping-cart"></i> Pedidos PrestaShop
+            </h1>
+        </div>
+    </div>
+
+    {# Estadísticas #}
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card border-left-primary shadow">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                Total Pedidos
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {{ fsc.totalPedidos }}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-list fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card border-left-success shadow">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                Importados
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {{ fsc.importados }}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-check-circle fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card border-left-warning shadow">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                Pendientes
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {{ fsc.pendientes }}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-clock fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Tabla de pedidos #}
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-table"></i> Últimos 100 Pedidos
+                    </h6>
+                    <span class="badge badge-info">PrestaShop</span>
+                </div>
+                <div class="card-body">
+                    {% if fsc.pedidos|length > 0 %}
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Referencia</th>
+                                        <th>Cliente</th>
+                                        <th class="text-right">Total</th>
+                                        <th>Fecha</th>
+                                        <th class="text-center">Estado</th>
+                                        <th class="text-center">Importado</th>
+                                        <th class="text-center">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for pedido in fsc.pedidos %}
+                                    <tr class="{% if pedido.importado %}table-success{% endif %}">
+                                        <td><strong>{{ pedido.id }}</strong></td>
+                                        <td>
+                                            <code>{{ pedido.reference }}</code>
+                                        </td>
+                                        <td>
+                                            {{ pedido.customer_name }}<br>
+                                            <small class="text-muted">ID: {{ pedido.customer_id }}</small>
+                                        </td>
+                                        <td class="text-right">
+                                            <strong>{{ pedido.total|number_format(2, ',', '.') }}€</strong>
+                                        </td>
+                                        <td>
+                                            <small>{{ pedido.date }}</small>
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge badge-info">{{ pedido.state }}</span>
+                                        </td>
+                                        <td class="text-center">
+                                            {% if pedido.importado %}
+                                                <span class="badge badge-success">
+                                                    <i class="fas fa-check"></i> Sí
+                                                </span>
+                                                {% if pedido.idalbaran %}
+                                                    <br>
+                                                    <a href="EditAlbaranCliente?code={{ pedido.idalbaran }}" target="_blank" class="badge badge-primary mt-1">
+                                                        <i class="fas fa-external-link-alt"></i> Ver albarán
+                                                    </a>
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="badge badge-warning">
+                                                    <i class="fas fa-clock"></i> No
+                                                </span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center">
+                                            {% if not pedido.importado %}
+                                                <form method="post" style="display: inline;">
+                                                    <input type="hidden" name="action" value="import-order"/>
+                                                    <input type="hidden" name="order_id" value="{{ pedido.id }}"/>
+                                                    <button type="submit" class="btn btn-sm btn-primary" title="Importar ahora">
+                                                        <i class="fas fa-download"></i> Importar
+                                                    </button>
+                                                </form>
+                                            {% else %}
+                                                <span class="text-muted">-</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="alert alert-info mt-3">
+                            <i class="fas fa-info-circle"></i>
+                            <strong>Leyenda:</strong>
+                            <ul class="mb-0 mt-2">
+                                <li><span class="badge badge-success"><i class="fas fa-check"></i> Sí</span> = Pedido ya importado en FacturaScripts</li>
+                                <li><span class="badge badge-warning"><i class="fas fa-clock"></i> No</span> = Pedido pendiente de importar</li>
+                                <li>Las filas verdes son pedidos importados</li>
+                                <li>Usa el botón <strong>"Importar"</strong> para importar pedidos pendientes manualmente</li>
+                            </ul>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong>No hay pedidos disponibles.</strong><br>
+                            Verifica que PrestaShop esté configurado correctamente en <a href="ConfigPrestashop">Configuración PrestaShop</a>.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.border-left-primary {
+    border-left: 0.25rem solid #4e73df !important;
+}
+.border-left-success {
+    border-left: 0.25rem solid #1cc88a !important;
+}
+.border-left-warning {
+    border-left: 0.25rem solid #f6c23e !important;
+}
+</style>
+
+{% endblock %}
