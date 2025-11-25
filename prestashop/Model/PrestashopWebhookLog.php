@@ -97,10 +97,10 @@ class PrestashopWebhookLog extends ModelClass
                     SUM(CASE WHEN token_valido THEN 1 ELSE 0 END) as validos,
                     SUM(CASE WHEN procesado THEN 1 ELSE 0 END) as procesados,
                     SUM(CASE WHEN resultado = 'success' THEN 1 ELSE 0 END) as exitosos
-                FROM prestashop_webhook_log
+                FROM " . static::tableName() . "
                 WHERE fecha >= NOW() - INTERVAL '{$days} days'";
 
-        $dataBase = new \FacturaScripts\Core\Base\DataBase\DataBase();
+        $dataBase = new \FacturaScripts\Core\Base\DataBase();
         $results = $dataBase->select($sql);
 
         if (empty($results)) {

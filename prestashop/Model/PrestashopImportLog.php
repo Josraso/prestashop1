@@ -126,25 +126,24 @@ class PrestashopImportLog extends ModelClass
     public static function getStats(string $periodo = 'today'): array
     {
         $sql = '';
-        $params = [];
 
         switch ($periodo) {
             case 'today':
-                $sql = "SELECT resultado, COUNT(*) as total FROM prestashop_import_log WHERE fecha = CURRENT_DATE GROUP BY resultado";
+                $sql = "SELECT resultado, COUNT(*) as total FROM " . static::tableName() . " WHERE fecha = CURRENT_DATE GROUP BY resultado";
                 break;
             case 'week':
-                $sql = "SELECT resultado, COUNT(*) as total FROM prestashop_import_log WHERE fecha >= CURRENT_DATE - INTERVAL '7 days' GROUP BY resultado";
+                $sql = "SELECT resultado, COUNT(*) as total FROM " . static::tableName() . " WHERE fecha >= CURRENT_DATE - 7 GROUP BY resultado";
                 break;
             case 'month':
-                $sql = "SELECT resultado, COUNT(*) as total FROM prestashop_import_log WHERE fecha >= CURRENT_DATE - INTERVAL '30 days' GROUP BY resultado";
+                $sql = "SELECT resultado, COUNT(*) as total FROM " . static::tableName() . " WHERE fecha >= CURRENT_DATE - 30 GROUP BY resultado";
                 break;
             case 'year':
-                $sql = "SELECT resultado, COUNT(*) as total FROM prestashop_import_log WHERE fecha >= CURRENT_DATE - INTERVAL '1 year' GROUP BY resultado";
+                $sql = "SELECT resultado, COUNT(*) as total FROM " . static::tableName() . " WHERE fecha >= CURRENT_DATE - 365 GROUP BY resultado";
                 break;
         }
 
-        $dataBase = new \FacturaScripts\Core\Base\DataBase\DataBase();
-        $results = $dataBase->select($sql, $params);
+        $dataBase = new \FacturaScripts\Core\Base\DataBase();
+        $results = $dataBase->select($sql);
 
         $stats = [
             'success' => 0,
@@ -167,13 +166,13 @@ class PrestashopImportLog extends ModelClass
     public static function getChartData(int $days = 30): array
     {
         $sql = "SELECT fecha, COUNT(*) as total
-                FROM prestashop_import_log
-                WHERE fecha >= CURRENT_DATE - INTERVAL '{$days} days'
+                FROM " . static::tableName() . "
+                WHERE fecha >= CURRENT_DATE - {$days}
                   AND resultado = 'success'
                 GROUP BY fecha
                 ORDER BY fecha ASC";
 
-        $dataBase = new \FacturaScripts\Core\Base\DataBase\DataBase();
+        $dataBase = new \FacturaScripts\Core\Base\DataBase();
         $results = $dataBase->select($sql);
 
         $labels = [];
