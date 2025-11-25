@@ -104,7 +104,7 @@ class PrestashopConnection
             return $states;
         } catch (\Exception $e) {
             // Log del error para debug
-            error_log('Error obteniendo estados de PrestaShop: ' . $e->getMessage());
+            \FacturaScripts\Core\Tools::log()->error('Error obteniendo estados de PrestaShop: ' . $e->getMessage());
             return [];
         }
     }
