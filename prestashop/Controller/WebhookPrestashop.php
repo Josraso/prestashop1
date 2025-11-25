@@ -108,21 +108,48 @@ class WebhookPrestashop extends Controller
 
             $result = $method->invoke($importer, $orderXml);
 
-            if ($result) {
+            if ($result && is_array($result)) {
                 $webhookLog->markProcessed(true, "Pedido importado correctamente");
                 Tools::log()->info("✓ Webhook procesado exitosamente: Pedido {$orderId} importado");
-                $this->sendResponse(200, [
+
+                // Preparar respuesta con datos del albarán/factura
+                $response = [
                     'success' => true,
                     'message' => 'Pedido importado correctamente',
-                    'order_id' => $orderId
-                ]);
+                    'order_id' => $orderId,
+                    'order_reference' => (string)$orderXml->reference
+                ];
+
+                // Añadir ID del albarán si existe
+                if (isset($result['idalbaran']) && $result['idalbaran']) {
+                    $response['albaran_id'] = (int)$result['idalbaran'];
+                }
+
+                // Buscar factura asociada al albarán
+                if (isset($result['idalbaran']) && $result['idalbaran']) {
+                    $albaranModel = new \FacturaScripts\Dinamic\Model\AlbaranCliente();
+                    if ($albaranModel->loadFromCode($result['idalbaran'])) {
+                        if (!empty($albaranModel->idfactura)) {
+                            $response['factura_id'] = (int)$albaranModel->idfactura;
+
+                            // Obtener código de factura
+                            $facturaModel = new \FacturaScripts\Dinamic\Model\FacturaCliente();
+                            if ($facturaModel->loadFromCode($albaranModel->idfactura)) {
+                                $response['factura_code'] = $facturaModel->codigo;
+                            }
+                        }
+                    }
+                }
+
+                $this->sendResponse(200, $response);
             } else {
                 $webhookLog->markProcessed(false, "El pedido ya estaba importado o falló la importación");
                 Tools::log()->warning("Webhook procesado pero pedido no importado (ya existe): {$orderId}");
                 $this->sendResponse(200, [
                     'success' => true,
                     'message' => 'Pedido ya importado anteriormente',
-                    'order_id' => $orderId
+                    'order_id' => $orderId,
+                    'order_reference' => (string)$orderXml->reference
                 ]);
             }
 
