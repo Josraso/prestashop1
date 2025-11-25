@@ -101,11 +101,15 @@ class OrdersDownload
             if (!empty($importSinceDate) && $importSinceId > 0) {
                 Tools::log()->info("Verificando si hay pedidos anteriores al ID {$importSinceId} que cumplan con la fecha {$importSinceDate}...");
 
-                // Buscar pedidos desde ID 1 hasta import_since_id-1 con la fecha configurada
-                $oldOrders = $this->connection->getOrders(10, null, [
-                    'id' => '[1,' . ($importSinceId - 1) . ']',
+                // Buscar pedidos por fecha solamente (API PrestaShop no acepta múltiples filtros complejos)
+                $testOrders = $this->connection->getOrders(50, null, [
                     'date_add' => '[' . $importSinceDate . ',]'
                 ]);
+
+                // Filtrar manualmente en PHP los que tienen ID < import_since_id
+                $oldOrders = array_filter($testOrders, function($order) use ($importSinceId) {
+                    return (int)$order->id < $importSinceId;
+                });
 
                 if (!empty($oldOrders)) {
                     Tools::log()->warning("⚠ Se encontraron " . count($oldOrders) . " pedidos antiguos que cumplen con la nueva fecha.");

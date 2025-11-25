@@ -92,6 +92,8 @@ class ListPedidosPrestashop extends Controller
             $connection = new PrestashopConnection($config);
 
             // Construir filtros para la API de PrestaShop
+            // IMPORTANTE: PrestaShop API no acepta múltiples filtros complejos
+            // Priorizamos fecha sobre ID, y filtramos el resto en PHP
             $filters = [];
 
             if (!empty($this->filterDateFrom)) {
@@ -104,7 +106,9 @@ class ListPedidosPrestashop extends Controller
                     $filters['date_add'] = '[,' . $this->filterDateTo . ']';
                 }
             }
-            if ($this->filterIdFrom > 0) {
+            // Si hay filtro de fecha, NO añadimos filtro de ID en la API (lo haremos en PHP)
+            // Si NO hay fecha, sí podemos usar filtro de ID en la API
+            if ($this->filterIdFrom > 0 && empty($filters['date_add'])) {
                 $filters['id'] = '[' . $this->filterIdFrom . ',]';
             }
 
@@ -116,12 +120,21 @@ class ListPedidosPrestashop extends Controller
                 return;
             }
 
-            // Convertir a array y ordenar por ID DESC (más recientes primero)
+            // Convertir a array
             $allOrders = [];
             foreach ($ordersXml as $orderXml) {
                 $allOrders[] = $orderXml;
             }
 
+            // Si había filtro de ID desde pero se usó filtro de fecha en API, aplicar filtro ID manualmente
+            if ($this->filterIdFrom > 0 && !empty($filters['date_add'])) {
+                $allOrders = array_filter($allOrders, function($order) {
+                    return (int)$order->id >= $this->filterIdFrom;
+                });
+                $allOrders = array_values($allOrders); // Reindexar
+            }
+
+            // Ordenar por ID DESC (más recientes primero)
             usort($allOrders, function($a, $b) {
                 return (int)$b->id - (int)$a->id;
             });
