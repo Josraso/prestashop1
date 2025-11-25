@@ -38,16 +38,22 @@ class OrdersDownload
      */
     public function batch(): void
     {
+        Tools::log()->info('[OrdersDownload::batch] Método batch() iniciado - VERSIÓN ACTUALIZADA 2025-11-25');
+
         if (!$this->config) {
             Tools::log()->error('PrestaShop: Configuración no encontrada');
             return;
         }
+
+        Tools::log()->info('[OrdersDownload::batch] Configuración encontrada - URL: ' . $this->config->shop_url);
 
         // VALIDACIÓN: Verificar conexión antes de procesar
         if (!$this->connection->isConnected()) {
             Tools::log()->error('PrestaShop: No se pudo conectar con la tienda. Verifica la URL y API Key en la configuración.');
             return;
         }
+
+        Tools::log()->info('[OrdersDownload::batch] Conexión verificada correctamente');
 
         // Verificar que hay estados seleccionados
         $estados = $this->config->getEstadosArray();
@@ -56,13 +62,17 @@ class OrdersDownload
             return;
         }
 
+        Tools::log()->info('[OrdersDownload::batch] Estados configurados: ' . implode(', ', $estados));
+
         // VALIDACIÓN: Probar conexión obteniendo 1 pedido
+        Tools::log()->info('[OrdersDownload::batch] Probando conexión con API...');
         try {
             $testOrders = $this->connection->getOrders(1, null);
             if ($testOrders === false || $testOrders === null) {
                 Tools::log()->error('PrestaShop: Error al obtener pedidos de la API. Verifica permisos del API Key.');
                 return;
             }
+            Tools::log()->info('[OrdersDownload::batch] Prueba de API exitosa - Pedidos de prueba: ' . count($testOrders));
         } catch (\Exception $e) {
             Tools::log()->error('PrestaShop: Error de conexión - ' . $e->getMessage());
             return;
@@ -87,38 +97,48 @@ class OrdersDownload
             }
 
             // Obtener pedidos con límite para evitar timeout
+            Tools::log()->info('[OrdersDownload::batch] Obteniendo pedidos desde la API (límite: 20, desde ID: ' . ($importSinceId > 0 ? $importSinceId : 'todos') . ')...');
+
             $orders = $this->connection->getOrders(
                 20, // Límite de 20 pedidos por ejecución
                 $importSinceId > 0 ? $importSinceId : null
             );
 
             if (empty($orders)) {
-                Tools::log()->info("No hay pedidos nuevos para importar");
+                Tools::log()->info("[OrdersDownload::batch] No hay pedidos nuevos para importar");
                 return;
             }
 
-            Tools::log()->info("Procesando " . count($orders) . " pedidos...");
+            Tools::log()->info("[OrdersDownload::batch] Se obtuvieron " . count($orders) . " pedidos. Procesando...");
 
             foreach ($orders as $orderXml) {
                 $orderId = (int)$orderXml->id;
                 $orderRef = (string)$orderXml->reference;
                 $orderDate = (string)$orderXml->date_add;
 
+                Tools::log()->debug("[OrdersDownload::batch] Procesando pedido ID: {$orderId}, Ref: {$orderRef}");
+
                 try {
                     // Filtro por fecha: Si está configurado, verificar fecha del pedido
                     if ($importSinceDate && $orderDate < $importSinceDate) {
+                        Tools::log()->debug("[OrdersDownload::batch] Pedido {$orderRef} omitido por fecha ({$orderDate} < {$importSinceDate})");
                         continue;
                     }
 
                     // Verificar si el pedido ya fue importado
                     if ($this->isOrderImported($orderRef)) {
+                        Tools::log()->debug("[OrdersDownload::batch] Pedido {$orderRef} ya importado - omitiendo");
                         $skipped++;
                         continue;
                     }
 
                     // Importar el pedido
+                    Tools::log()->info("[OrdersDownload::batch] Importando pedido {$orderRef}...");
                     if ($this->importOrder($orderXml)) {
                         $imported++;
+                        Tools::log()->info("[OrdersDownload::batch] ✓ Pedido {$orderRef} importado correctamente");
+                    } else {
+                        Tools::log()->warning("[OrdersDownload::batch] Pedido {$orderRef} no se pudo importar (puede ya existir)");
                     }
                 } catch (\Exception $e) {
                     $errors++;
@@ -129,6 +149,12 @@ class OrdersDownload
             }
 
             // Resumen de la importación
+            Tools::log()->info('[OrdersDownload::batch] ========== RESUMEN DE IMPORTACIÓN ==========');
+            Tools::log()->info('[OrdersDownload::batch] Pedidos importados: ' . $imported);
+            Tools::log()->info('[OrdersDownload::batch] Pedidos omitidos (ya importados): ' . $skipped);
+            Tools::log()->info('[OrdersDownload::batch] Errores: ' . $errors);
+            Tools::log()->info('[OrdersDownload::batch] ===========================================');
+
             if ($imported > 0) {
                 Tools::log()->info("PrestaShop: Importados {$imported} pedidos como albaranes");
             }
