@@ -163,6 +163,21 @@ class OrdersDownload
             Tools::log()->info('[OrdersDownload::batch] Errores: ' . $errors);
             Tools::log()->info('[OrdersDownload::batch] ===========================================');
 
+            // IMPORTANTE: Si NO se importó ninguno, avanzar el puntero automáticamente
+            // para evitar procesar siempre los mismos pedidos en la próxima ejecución
+            if ($imported == 0 && count($orders) > 0) {
+                // Obtener el último ID procesado
+                $lastOrderXml = end($orders);
+                $lastOrderId = (int)$lastOrderXml->id;
+
+                // Actualizar import_since_id para que la próxima ejecución empiece después de este
+                $this->config->import_since_id = $lastOrderId;
+                $this->config->save();
+
+                Tools::log()->warning("[OrdersDownload::batch] ⚠ NO se importó ningún pedido en este lote.");
+                Tools::log()->warning("[OrdersDownload::batch] ⚠ Avanzando automáticamente import_since_id a {$lastOrderId} para continuar en la próxima ejecución.");
+            }
+
             if ($imported > 0) {
                 Tools::log()->info("PrestaShop: Importados {$imported} pedidos como albaranes");
             }
