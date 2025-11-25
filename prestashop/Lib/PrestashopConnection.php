@@ -143,12 +143,9 @@ class PrestashopConnection
                 $params['filter[id]'] = '[' . $sinceId . ',999999999]';
             }
 
-            // Añadir filtros personalizados
-            foreach ($customFilters as $key => $value) {
-                if ($key === 'date_add' || $key === 'id') {
-                    $params['filter[' . $key . ']'] = $value;
-                }
-            }
+            // NOTA: PrestaShop API NO acepta múltiples filtros complejos (ej: current_state + date_add)
+            // Los customFilters se ignoran - filtrar en PHP después de obtener resultados
+            // NO añadir customFilters aquí porque genera error 400
 
             // Llamar a la API con parámetros correctos
             $xmlString = $this->webService->get('orders', null, null, $params);
