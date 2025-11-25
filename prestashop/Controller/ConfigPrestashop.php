@@ -38,6 +38,9 @@ class ConfigPrestashop extends Controller
     /** @var string */
     public $activeTab = 'config';
 
+    /** @var array */
+    public $recentWebhooks = [];
+
     public function getPageData(): array
     {
         $data = parent::getPageData();
@@ -58,6 +61,7 @@ class ConfigPrestashop extends Controller
         $this->loadAlmacenes();
         $this->loadSeries();
         $this->loadMappings();
+        $this->loadRecentWebhooks();
 
         // Obtener tab activa desde GET
         $this->activeTab = $this->request->query->get('tab', 'config');
@@ -95,6 +99,10 @@ class ConfigPrestashop extends Controller
 
             case 'regenerate-token':
                 $this->regenerateTokenAction();
+                break;
+
+            case 'test-webhook':
+                $this->testWebhookAction();
                 break;
         }
     }
@@ -499,5 +507,95 @@ class ConfigPrestashop extends Controller
         $baseUrl = $protocol . $host;
 
         return $baseUrl . '/WebhookPrestashop?token=' . $this->config->webhook_token;
+    }
+
+    /**
+     * Carga los webhooks recientes
+     */
+    private function loadRecentWebhooks(): void
+    {
+        $webhookModel = new \FacturaScripts\Plugins\Prestashop\Model\PrestashopWebhookLog();
+        $order = ['fecha' => 'DESC', 'id' => 'DESC'];
+        $this->recentWebhooks = $webhookModel->all([], $order, 0, 20);
+    }
+
+    /**
+     * Prueba el webhook enviando una petición simulada
+     */
+    private function testWebhookAction(): void
+    {
+        if (!$this->permissions->allowUpdate) {
+            Tools::log()->warning('No tienes permisos para probar el webhook');
+            return;
+        }
+
+        $orderId = $this->request->request->get('test_order_id', '');
+
+        if (empty($orderId) || !is_numeric($orderId)) {
+            Tools::log()->error('Debes proporcionar un ID de pedido válido para probar');
+            $this->activeTab = 'webhooks';
+            return;
+        }
+
+        $webhookUrl = $this->getWebhookUrl();
+
+        if (empty($webhookUrl)) {
+            Tools::log()->error('No hay token configurado. Activa los webhooks primero.');
+            $this->activeTab = 'webhooks';
+            return;
+        }
+
+        // Enviar webhook de prueba
+        try {
+            $payload = ['order_id' => (int)$orderId];
+
+            $ch = curl_init($webhookUrl);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+
+            if ($curlError) {
+                throw new \Exception("Error cURL: {$curlError}");
+            }
+
+            if ($httpCode == 200) {
+                $responseData = json_decode($response, true);
+                if (isset($responseData['success']) && $responseData['success']) {
+                    Tools::log()->info("✓ Webhook de prueba enviado correctamente. Pedido {$orderId} procesado.");
+                } else {
+                    Tools::log()->warning("Webhook enviado pero con advertencias. Respuesta: {$response}");
+                }
+            } else {
+                Tools::log()->error("Error en webhook. Código HTTP: {$httpCode}. Respuesta: {$response}");
+            }
+
+        } catch (\Exception $e) {
+            Tools::log()->error('Error al probar webhook: ' . $e->getMessage());
+        }
+
+        $this->activeTab = 'webhooks';
+        $this->loadRecentWebhooks(); // Recargar para mostrar el nuevo webhook
+    }
+
+    /**
+     * Obtiene clase de badge según resultado del webhook
+     */
+    public function getWebhookBadgeClass(string $resultado): string
+    {
+        switch ($resultado) {
+            case 'success':
+                return 'badge-success';
+            case 'error':
+                return 'badge-danger';
+            default:
+                return 'badge-secondary';
+        }
     }
 }

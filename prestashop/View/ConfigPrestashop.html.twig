@@ -721,6 +721,44 @@
                             </div>
                         </div>
 
+                        {# Probar Webhook #}
+                        <div class="card shadow mb-4 border-info">
+                            <div class="card-header py-3 bg-info text-white">
+                                <h6 class="m-0 font-weight-bold">
+                                    <i class="fas fa-flask"></i> Probar Webhook
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <p>Envía un webhook de prueba para verificar que todo funciona correctamente:</p>
+
+                                <form action="{{ fsc.url() }}?tab=webhooks" method="post" class="form-inline">
+                                    <input type="hidden" name="action" value="test-webhook"/>
+                                    {{ formToken() }}
+
+                                    <div class="form-group mr-2">
+                                        <label for="test_order_id" class="mr-2">ID del pedido PrestaShop:</label>
+                                        <input type="number"
+                                               name="test_order_id"
+                                               id="test_order_id"
+                                               class="form-control"
+                                               placeholder="Ej: 123"
+                                               min="1"
+                                               required/>
+                                    </div>
+
+                                    <button type="submit" class="btn btn-info">
+                                        <i class="fas fa-paper-plane"></i> Enviar Prueba
+                                    </button>
+                                </form>
+
+                                <div class="alert alert-info mt-3 mb-0">
+                                    <i class="fas fa-info-circle"></i>
+                                    <strong>Nota:</strong> Esto simulará que PrestaShop envía un webhook para el pedido especificado.
+                                    El pedido debe existir en tu tienda PrestaShop.
+                                </div>
+                            </div>
+                        </div>
+
                         {# Historial de Webhooks #}
                         <div class="card shadow mb-4">
                             <div class="card-header py-3 d-flex justify-content-between align-items-center">
@@ -730,13 +768,70 @@
                                 <span class="badge badge-info">Últimos 20</span>
                             </div>
                             <div class="card-body">
-                                <p class="text-muted">
-                                    Aquí verás los webhooks recibidos desde PrestaShop. Útil para depurar problemas.
-                                </p>
-                                <p class="text-center text-muted">
-                                    <i class="fas fa-inbox fa-3x mb-2"></i><br>
-                                    <em>Por implementar: Tabla con historial de webhooks</em>
-                                </p>
+                                {% if fsc.recentWebhooks|length > 0 %}
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-hover">
+                                            <thead>
+                                                <tr>
+                                                    <th>Fecha</th>
+                                                    <th>IP</th>
+                                                    <th>Order ID</th>
+                                                    <th>Token</th>
+                                                    <th>Procesado</th>
+                                                    <th>Resultado</th>
+                                                    <th>Mensaje</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for webhook in fsc.recentWebhooks %}
+                                                <tr>
+                                                    <td class="text-nowrap">
+                                                        <small>{{ webhook.fecha }}</small>
+                                                    </td>
+                                                    <td>
+                                                        <small><code>{{ webhook.ip }}</code></small>
+                                                    </td>
+                                                    <td>
+                                                        {% if webhook.order_id %}
+                                                            <strong>{{ webhook.order_id }}</strong>
+                                                        {% else %}
+                                                            <small class="text-muted">-</small>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>
+                                                        {% if webhook.token_valido %}
+                                                            <span class="badge badge-success"><i class="fas fa-check"></i> Válido</span>
+                                                        {% else %}
+                                                            <span class="badge badge-danger"><i class="fas fa-times"></i> Inválido</span>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>
+                                                        {% if webhook.procesado %}
+                                                            <span class="badge badge-success"><i class="fas fa-check"></i> Sí</span>
+                                                        {% else %}
+                                                            <span class="badge badge-warning"><i class="fas fa-clock"></i> No</span>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>
+                                                        <span class="badge {{ fsc.getWebhookBadgeClass(webhook.resultado) }}">
+                                                            {{ webhook.resultado }}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <small>{{ webhook.mensaje|slice(0, 50) }}{% if webhook.mensaje|length > 50 %}...{% endif %}</small>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                {% else %}
+                                    <div class="alert alert-warning">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                        <strong>No hay webhooks registrados aún.</strong><br>
+                                        Usa el botón "Enviar Prueba" arriba para probar que todo funciona correctamente.
+                                    </div>
+                                {% endif %}
                             </div>
                         </div>
                     {% else %}
