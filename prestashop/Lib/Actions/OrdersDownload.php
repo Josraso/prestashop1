@@ -116,18 +116,19 @@ class OrdersDownload
                 $orderRef = (string)$orderXml->reference;
                 $orderDate = (string)$orderXml->date_add;
 
-                Tools::log()->debug("[OrdersDownload::batch] Procesando pedido ID: {$orderId}, Ref: {$orderRef}");
+                Tools::log()->info("[OrdersDownload::batch] >>> Pedido ID: {$orderId}, Ref: {$orderRef}, Fecha: {$orderDate}");
 
                 try {
                     // Filtro por fecha: Si está configurado, verificar fecha del pedido
                     if ($importSinceDate && $orderDate < $importSinceDate) {
-                        Tools::log()->debug("[OrdersDownload::batch] Pedido {$orderRef} omitido por fecha ({$orderDate} < {$importSinceDate})");
+                        Tools::log()->info("[OrdersDownload::batch] ⊘ OMITIDO POR FECHA: {$orderRef} ({$orderDate} < {$importSinceDate})");
+                        $skipped++; // Contar como omitido
                         continue;
                     }
 
                     // Verificar si el pedido ya fue importado
                     if ($this->isOrderImported($orderRef)) {
-                        Tools::log()->debug("[OrdersDownload::batch] Pedido {$orderRef} ya importado - omitiendo");
+                        Tools::log()->info("[OrdersDownload::batch] ⊘ YA IMPORTADO: {$orderRef}");
                         $skipped++;
                         continue;
                     }
