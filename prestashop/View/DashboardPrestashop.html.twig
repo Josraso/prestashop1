@@ -106,175 +106,228 @@
         </div>
     </div>
 
-    {# Gráfica de evolución #}
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card shadow">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">
-                        <i class="fas fa-chart-area"></i> Evolución de Importaciones (Últimos 30 días)
-                    </h6>
-                </div>
-                <div class="card-body">
-                    <canvas id="importChart" height="80"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    {# Tabla de últimas importaciones #}
+    {# Pestañas de importaciones #}
     <div class="row">
         <div class="col-12">
             <div class="card shadow">
                 <div class="card-header py-3">
                     <h6 class="m-0 font-weight-bold text-primary">
-                        <i class="fas fa-list"></i> Últimas 20 Importaciones
+                        <i class="fas fa-list"></i> Historial de Importaciones
                     </h6>
                 </div>
                 <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead>
-                                <tr>
-                                    <th>Fecha/Hora</th>
-                                    <th>Pedido PS</th>
-                                    <th>Albarán FS</th>
-                                    <th>Cliente</th>
-                                    <th class="text-right">Total</th>
-                                    <th>Resultado</th>
-                                    <th>Origen</th>
-                                    <th>Mensaje</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for log in fsc.recentImports %}
-                                <tr>
-                                    <td class="text-nowrap">
-                                        {{ log.fecha }}<br>
-                                        <small class="text-muted">{{ log.hora }}</small>
-                                    </td>
-                                    <td>
-                                        {% if log.order_reference %}
-                                            <strong>{{ log.order_reference }}</strong><br>
-                                            <small class="text-muted">ID: {{ log.order_id }}</small>
+                    {# Tabs Navigation #}
+                    <ul class="nav nav-tabs" id="importTabs" role="tablist">
+                        <li class="nav-item">
+                            <a class="nav-link active" id="success-tab" data-toggle="tab" href="#success" role="tab">
+                                <i class="fas fa-check-circle text-success"></i>
+                                Importados ({{ fsc.importsSuccess|length }})
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" id="skipped-tab" data-toggle="tab" href="#skipped" role="tab">
+                                <i class="fas fa-minus-circle text-warning"></i>
+                                Omitidos ({{ fsc.importsSkipped|length }})
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" id="error-tab" data-toggle="tab" href="#error" role="tab">
+                                <i class="fas fa-times-circle text-danger"></i>
+                                Errores ({{ fsc.importsError|length }})
+                            </a>
+                        </li>
+                    </ul>
+
+                    {# Tabs Content #}
+                    <div class="tab-content mt-3" id="importTabsContent">
+                        {# IMPORTADOS #}
+                        <div class="tab-pane fade show active" id="success" role="tabpanel">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Fecha/Hora</th>
+                                            <th>Pedido PS</th>
+                                            <th>Albarán FS</th>
+                                            <th>Cliente</th>
+                                            <th class="text-right">Total</th>
+                                            <th>Origen</th>
+                                            <th>Mensaje</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for log in fsc.importsSuccess %}
+                                        <tr>
+                                            <td class="text-nowrap">
+                                                <strong>{{ log.fecha }}</strong><br>
+                                                <small class="text-muted">{{ log.hora }}</small>
+                                            </td>
+                                            <td>
+                                                {% if log.order_reference %}
+                                                    <strong>{{ log.order_reference }}</strong><br>
+                                                    <small class="text-muted">ID: {{ log.order_id }}</small>
+                                                {% else %}
+                                                    <small class="text-muted">-</small>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if log.idalbaran %}
+                                                    <a href="EditAlbaranCliente?code={{ log.idalbaran }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                                        <i class="fas fa-file-invoice"></i> Ver Albarán
+                                                    </a>
+                                                {% else %}
+                                                    <small class="text-muted">-</small>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if log.nombrecliente %}
+                                                    <strong>{{ log.nombrecliente }}</strong><br>
+                                                    <small class="text-muted">{{ log.codcliente }}</small>
+                                                {% else %}
+                                                    <small class="text-muted">-</small>
+                                                {% endif %}
+                                            </td>
+                                            <td class="text-right">
+                                                {% if log.total %}
+                                                    <strong class="text-success">{{ log.total|number_format(2, ',', '.') }}€</strong>
+                                                {% else %}
+                                                    <small class="text-muted">-</small>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <span class="badge badge-dark">
+                                                    <i class="fas fa-{{ log.origen == 'webhook' ? 'bolt' : (log.origen == 'manual' ? 'hand-pointer' : 'clock') }}"></i>
+                                                    {{ log.origen }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                {% if log.mensaje %}
+                                                    <small>{{ log.mensaje|slice(0, 60) }}{% if log.mensaje|length > 60 %}...{% endif %}</small>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
                                         {% else %}
-                                            <small class="text-muted">-</small>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if log.idalbaran %}
-                                            <a href="EditAlbaranCliente?code={{ log.idalbaran }}" target="_blank">
-                                                Ver Albarán <i class="fas fa-external-link-alt"></i>
-                                            </a>
+                                        <tr>
+                                            <td colspan="7" class="text-center text-muted py-4">
+                                                <i class="fas fa-inbox fa-2x mb-2"></i><br>
+                                                No hay pedidos importados aún
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {# OMITIDOS #}
+                        <div class="tab-pane fade" id="skipped" role="tabpanel">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Fecha/Hora</th>
+                                            <th>Pedido PS</th>
+                                            <th>Origen</th>
+                                            <th>Motivo</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for log in fsc.importsSkipped %}
+                                        <tr>
+                                            <td class="text-nowrap">
+                                                <strong>{{ log.fecha }}</strong><br>
+                                                <small class="text-muted">{{ log.hora }}</small>
+                                            </td>
+                                            <td>
+                                                {% if log.order_reference %}
+                                                    <strong>{{ log.order_reference }}</strong><br>
+                                                    <small class="text-muted">ID: {{ log.order_id }}</small>
+                                                {% else %}
+                                                    <small class="text-muted">ID: {{ log.order_id }}</small>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <span class="badge badge-dark">
+                                                    <i class="fas fa-{{ log.origen == 'webhook' ? 'bolt' : (log.origen == 'manual' ? 'hand-pointer' : 'clock') }}"></i>
+                                                    {{ log.origen }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                {% if log.mensaje %}
+                                                    <small class="text-warning"><strong>{{ log.mensaje }}</strong></small>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
                                         {% else %}
-                                            <small class="text-muted">-</small>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if log.nombrecliente %}
-                                            {{ log.nombrecliente }}<br>
-                                            <small class="text-muted">{{ log.codcliente }}</small>
+                                        <tr>
+                                            <td colspan="4" class="text-center text-muted py-4">
+                                                <i class="fas fa-inbox fa-2x mb-2"></i><br>
+                                                No hay pedidos omitidos
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {# ERRORES #}
+                        <div class="tab-pane fade" id="error" role="tabpanel">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Fecha/Hora</th>
+                                            <th>Pedido PS</th>
+                                            <th>Origen</th>
+                                            <th>Error</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for log in fsc.importsError %}
+                                        <tr class="table-danger">
+                                            <td class="text-nowrap">
+                                                <strong>{{ log.fecha }}</strong><br>
+                                                <small class="text-muted">{{ log.hora }}</small>
+                                            </td>
+                                            <td>
+                                                {% if log.order_reference %}
+                                                    <strong>{{ log.order_reference }}</strong><br>
+                                                    <small class="text-muted">ID: {{ log.order_id }}</small>
+                                                {% else %}
+                                                    <small class="text-muted">ID: {{ log.order_id }}</small>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <span class="badge badge-dark">
+                                                    <i class="fas fa-{{ log.origen == 'webhook' ? 'bolt' : (log.origen == 'manual' ? 'hand-pointer' : 'clock') }}"></i>
+                                                    {{ log.origen }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                {% if log.mensaje %}
+                                                    <small class="text-danger"><strong>{{ log.mensaje }}</strong></small>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
                                         {% else %}
-                                            <small class="text-muted">-</small>
-                                        {% endif %}
-                                    </td>
-                                    <td class="text-right">
-                                        {% if log.total %}
-                                            <strong>{{ log.total|number_format(2, ',', '.') }}€</strong>
-                                        {% else %}
-                                            <small class="text-muted">-</small>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        <span class="badge {{ fsc.getBadgeClass(log.resultado) }}">
-                                            {{ fsc.getBadgeText(log.resultado) }}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <span class="badge badge-secondary">
-                                            {{ log.origen }}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        {% if log.mensaje %}
-                                            <small>{{ log.mensaje|slice(0, 50) }}{% if log.mensaje|length > 50 %}...{% endif %}</small>
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                                {% else %}
-                                <tr>
-                                    <td colspan="8" class="text-center text-muted">
-                                        No hay importaciones registradas aún
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+                                        <tr>
+                                            <td colspan="4" class="text-center text-muted py-4">
+                                                <i class="fas fa-check-circle fa-2x mb-2 text-success"></i><br>
+                                                No hay errores de importación
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
-
-{# Chart.js para la gráfica #}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const ctx = document.getElementById('importChart').getContext('2d');
-
-    const chartData = {
-        labels: {{ fsc.chartData.labels|json_encode|raw }},
-        datasets: [{
-            label: 'Pedidos Importados',
-            data: {{ fsc.chartData.data|json_encode|raw }},
-            backgroundColor: 'rgba(78, 115, 223, 0.1)',
-            borderColor: 'rgba(78, 115, 223, 1)',
-            borderWidth: 2,
-            tension: 0.3,
-            fill: true,
-            pointBackgroundColor: 'rgba(78, 115, 223, 1)',
-            pointBorderColor: '#fff',
-            pointHoverBackgroundColor: '#fff',
-            pointHoverBorderColor: 'rgba(78, 115, 223, 1)'
-        }]
-    };
-
-    const config = {
-        type: 'line',
-        data: chartData,
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    display: true,
-                    position: 'bottom'
-                },
-                tooltip: {
-                    mode: 'index',
-                    intersect: false,
-                    callbacks: {
-                        label: function(context) {
-                            return context.dataset.label + ': ' + context.parsed.y + ' pedidos';
-                        }
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        stepSize: 1
-                    }
-                }
-            }
-        }
-    };
-
-    new Chart(ctx, config);
-});
-</script>
 
 <style>
 .border-left-primary {

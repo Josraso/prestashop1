@@ -23,10 +23,13 @@ class DashboardPrestashop extends Controller
     public $statsMonth = [];
 
     /** @var array */
-    public $recentImports = [];
+    public $importsSuccess = [];
 
     /** @var array */
-    public $chartData = [];
+    public $importsSkipped = [];
+
+    /** @var array */
+    public $importsError = [];
 
     /** @var PrestashopConfig */
     public $config;
@@ -55,8 +58,7 @@ class DashboardPrestashop extends Controller
 
         // Cargar estadísticas
         $this->loadStats();
-        $this->loadRecentImports();
-        $this->loadChartData();
+        $this->loadImportsByResult();
     }
 
     /**
@@ -70,22 +72,24 @@ class DashboardPrestashop extends Controller
     }
 
     /**
-     * Carga las últimas importaciones
+     * Carga importaciones separadas por resultado
      */
-    private function loadRecentImports(): void
+    private function loadImportsByResult(): void
     {
         $logModel = new PrestashopImportLog();
-        $where = [];
         $order = ['fecha' => 'DESC', 'hora' => 'DESC'];
-        $this->recentImports = $logModel->all($where, $order, 0, 20);
-    }
 
-    /**
-     * Carga datos para la gráfica
-     */
-    private function loadChartData(): void
-    {
-        $this->chartData = PrestashopImportLog::getChartData(30);
+        // Importados correctamente
+        $whereSuccess = [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('resultado', 'success')];
+        $this->importsSuccess = $logModel->all($whereSuccess, $order, 0, 50);
+
+        // Omitidos (ya importados o por fecha)
+        $whereSkipped = [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('resultado', 'skipped')];
+        $this->importsSkipped = $logModel->all($whereSkipped, $order, 0, 50);
+
+        // Errores
+        $whereError = [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('resultado', 'error')];
+        $this->importsError = $logModel->all($whereError, $order, 0, 50);
     }
 
     /**
@@ -115,7 +119,7 @@ class DashboardPrestashop extends Controller
 
             // Recargar estadísticas después de la importación
             $this->loadStats();
-            $this->loadRecentImports();
+            $this->loadImportsByResult();
 
         } catch (\Exception $e) {
             Tools::log()->error('Error en importación manual: ' . $e->getMessage());
