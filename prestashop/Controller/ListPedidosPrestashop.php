@@ -37,14 +37,14 @@ class ListPedidosPrestashop extends Controller
     /** @var int */
     public $totalPages = 1;
 
-    /** @var string */
-    public $filterDateFrom = '';
-
-    /** @var string */
-    public $filterDateTo = '';
-
     /** @var int */
     public $filterIdFrom = 0;
+
+    /** @var int */
+    public $filterIdTo = 0;
+
+    /** @var string */
+    public $filterImportado = 'todos'; // todos, importado, pendiente
 
     public function getPageData(): array
     {
@@ -60,9 +60,9 @@ class ListPedidosPrestashop extends Controller
         parent::privateCore($response, $user, $permissions);
 
         // Obtener filtros
-        $this->filterDateFrom = $this->request->query->get('date_from', '');
-        $this->filterDateTo = $this->request->query->get('date_to', '');
         $this->filterIdFrom = (int)$this->request->query->get('id_from', 0);
+        $this->filterIdTo = (int)$this->request->query->get('id_to', 0);
+        $this->filterImportado = $this->request->query->get('importado', 'todos');
         $this->limit = (int)$this->request->query->get('limit', 100);
         $this->page = (int)$this->request->query->get('page', 1);
         $this->offset = ($this->page - 1) * $this->limit;
@@ -91,29 +91,8 @@ class ListPedidosPrestashop extends Controller
         try {
             $connection = new PrestashopConnection($config);
 
-            // Construir filtros para la API de PrestaShop
-            // IMPORTANTE: PrestaShop API no acepta múltiples filtros complejos
-            // Priorizamos fecha sobre ID, y filtramos el resto en PHP
-            $filters = [];
-
-            if (!empty($this->filterDateFrom)) {
-                $filters['date_add'] = '[' . $this->filterDateFrom . ',]';
-            }
-            if (!empty($this->filterDateTo)) {
-                if (isset($filters['date_add'])) {
-                    $filters['date_add'] = '[' . $this->filterDateFrom . ',' . $this->filterDateTo . ']';
-                } else {
-                    $filters['date_add'] = '[,' . $this->filterDateTo . ']';
-                }
-            }
-            // Si hay filtro de fecha, NO añadimos filtro de ID en la API (lo haremos en PHP)
-            // Si NO hay fecha, sí podemos usar filtro de ID en la API
-            if ($this->filterIdFrom > 0 && empty($filters['date_add'])) {
-                $filters['id'] = '[' . $this->filterIdFrom . ',]';
-            }
-
-            // Obtener pedidos con filtros - usamos un límite grande para filtrar luego
-            $ordersXml = $connection->getOrders(500, null, $filters);
+            // Obtener últimos 500 pedidos sin filtros (los filtraremos en PHP)
+            $ordersXml = $connection->getOrders(500, null);
 
             if (!$ordersXml) {
                 Tools::log()->error('No se pudieron obtener pedidos de PrestaShop');
@@ -123,15 +102,17 @@ class ListPedidosPrestashop extends Controller
             // Convertir a array
             $allOrders = [];
             foreach ($ordersXml as $orderXml) {
-                $allOrders[] = $orderXml;
-            }
+                $orderId = (int)$orderXml->id;
 
-            // Si había filtro de ID desde pero se usó filtro de fecha en API, aplicar filtro ID manualmente
-            if ($this->filterIdFrom > 0 && !empty($filters['date_add'])) {
-                $allOrders = array_filter($allOrders, function($order) {
-                    return (int)$order->id >= $this->filterIdFrom;
-                });
-                $allOrders = array_values($allOrders); // Reindexar
+                // Aplicar filtros en PHP
+                if ($this->filterIdFrom > 0 && $orderId < $this->filterIdFrom) {
+                    continue;
+                }
+                if ($this->filterIdTo > 0 && $orderId > $this->filterIdTo) {
+                    continue;
+                }
+
+                $allOrders[] = $orderXml;
             }
 
             // Ordenar por ID DESC (más recientes primero)
@@ -139,31 +120,53 @@ class ListPedidosPrestashop extends Controller
                 return (int)$b->id - (int)$a->id;
             });
 
-            // Calcular paginación
-            $this->totalPedidos = count($allOrders);
+            $albaranModel = new AlbaranCliente();
+
+            // Procesar todos y aplicar filtro de importado
+            $filteredOrders = [];
+            foreach ($allOrders as $orderXml) {
+                $orderRef = (string)$orderXml->reference;
+
+                // Verificar si está importado
+                $where = [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('numero2', $orderRef)];
+                $albaran = $albaranModel->all($where, [], 0, 1);
+                $importado = !empty($albaran);
+
+                // Aplicar filtro de importado
+                if ($this->filterImportado === 'importado' && !$importado) {
+                    continue;
+                }
+                if ($this->filterImportado === 'pendiente' && $importado) {
+                    continue;
+                }
+
+                $filteredOrders[] = [
+                    'xml' => $orderXml,
+                    'importado' => $importado,
+                    'albaran' => $importado && !empty($albaran) ? $albaran[0] : null
+                ];
+            }
+
+            // Calcular paginación DESPUÉS de filtrar
+            $this->totalPedidos = count($filteredOrders);
             $this->totalPages = ceil($this->totalPedidos / $this->limit);
 
             // Obtener solo la página actual
-            $ordersPage = array_slice($allOrders, $this->offset, $this->limit);
-
-            $albaranModel = new AlbaranCliente();
+            $ordersPage = array_slice($filteredOrders, $this->offset, $this->limit);
 
             // Resetear contadores
             $this->importados = 0;
             $this->pendientes = 0;
 
-            foreach ($ordersPage as $orderXml) {
+            foreach ($ordersPage as $orderData) {
+                $orderXml = $orderData['xml'];
+                $importado = $orderData['importado'];
                 $orderId = (int)$orderXml->id;
                 $orderRef = (string)$orderXml->reference;
                 $customerId = (int)$orderXml->id_customer;
                 $currentState = (int)$orderXml->current_state;
                 $totalPaid = (float)$orderXml->total_paid;
                 $dateAdd = (string)$orderXml->date_add;
-
-                // Verificar si está importado (buscar albarán con numero2 = order_reference)
-                $where = [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('numero2', $orderRef)];
-                $albaran = $albaranModel->all($where, [], 0, 1);
-                $importado = !empty($albaran);
 
                 if ($importado) {
                     $this->importados++;
@@ -183,11 +186,9 @@ class ListPedidosPrestashop extends Controller
                     'total' => $totalPaid,
                     'date' => $dateAdd,
                     'importado' => $importado,
-                    'idalbaran' => $importado && !empty($albaran) ? $albaran[0]->idalbaran : null
+                    'idalbaran' => $orderData['albaran'] ? $orderData['albaran']->idalbaran : null
                 ];
             }
-
-            $this->totalPedidos = count($this->pedidos);
 
         } catch (\Exception $e) {
             Tools::log()->error('Error cargando pedidos: ' . $e->getMessage());

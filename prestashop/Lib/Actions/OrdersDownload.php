@@ -214,22 +214,37 @@ class OrdersDownload
             Tools::log()->info('[OrdersDownload::batch] Errores: ' . $errors);
             Tools::log()->info('[OrdersDownload::batch] ===========================================');
 
-            // IMPORTANTE: Si NO se importó ninguno, avanzar el puntero automáticamente
-            // Esto permite atravesar pedidos viejos cuando hay filtro de fecha
+            // IMPORTANTE: Si NO se importó ninguno, avanzar el puntero automáticamente SOLO si no fue por fecha
+            // Esto permite atravesar pedidos ya importados, pero NO pedidos que no cumplen fecha
             if ($imported == 0 && count($orders) > 0) {
-                // Obtener el último ID procesado
-                $lastOrderXml = end($orders);
-                $lastOrderId = (int)$lastOrderXml->id;
+                // Verificar si TODOS fueron omitidos por fecha
+                $allSkippedByDate = true;
+                foreach ($orders as $orderXml) {
+                    $orderDate = $this->getLastOrderStatusDate($orderXml, (int)$orderXml->id);
+                    if (!$orderDate) {
+                        $orderDate = (string)$orderXml->date_add;
+                    }
 
-                // Actualizar import_since_id para que la próxima ejecución empiece después de este
-                $this->config->import_since_id = $lastOrderId;
-                $this->config->save();
+                    // Si algún pedido NO fue omitido por fecha, podemos avanzar
+                    if (empty($importSinceDate) || $orderDate >= $importSinceDate) {
+                        $allSkippedByDate = false;
+                        break;
+                    }
+                }
 
-                Tools::log()->warning("[OrdersDownload::batch] ⚠ NO se importó ningún pedido en este lote.");
-                Tools::log()->warning("[OrdersDownload::batch] ⚠ Avanzando automáticamente import_since_id a {$lastOrderId} para continuar en la próxima ejecución.");
+                // SOLO avanzar si NO todos fueron omitidos por fecha
+                if (!$allSkippedByDate) {
+                    $lastOrderXml = end($orders);
+                    $lastOrderId = (int)$lastOrderXml->id;
 
-                if (!empty($importSinceDate)) {
-                    Tools::log()->info("[OrdersDownload::batch] ℹ Con filtro de fecha activo, esto permite atravesar pedidos viejos hasta encontrar los que cumplan la fecha.");
+                    $this->config->import_since_id = $lastOrderId;
+                    $this->config->save();
+
+                    Tools::log()->warning("[OrdersDownload::batch] ⚠ NO se importó ningún pedido en este lote (ya estaban importados).");
+                    Tools::log()->warning("[OrdersDownload::batch] ⚠ Avanzando automáticamente import_since_id a {$lastOrderId}.");
+                } else {
+                    Tools::log()->warning("[OrdersDownload::batch] ⚠ NO se importó ningún pedido porque TODOS están fuera del rango de fecha.");
+                    Tools::log()->warning("[OrdersDownload::batch] ⚠ NO se avanza el puntero. Ya hemos alcanzado el final de pedidos válidos.");
                 }
             }
 

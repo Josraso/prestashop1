@@ -73,26 +73,15 @@ class DownloadInvoicePrestashop extends Controller
             return;
         }
 
-        // Método 2: Buscar factura que tenga el código del albarán
-        $facturaModel = new FacturaCliente();
-        $whereFactura = [
-            new DataBaseWhere('codcliente', $albaran->codcliente),
-            new DataBaseWhere('codalmacen', $albaran->codalmacen)
-        ];
-        $facturas = $facturaModel->all($whereFactura, ['fecha' => 'DESC'], 0, 50);
+        // Método 2: Buscar factura por SQL directamente (más eficiente)
+        $sql = "SELECT DISTINCT idfactura FROM lineasfacturascli
+                WHERE idalbaran = " . (int)$albaran->idalbaran . "
+                LIMIT 1";
 
-        // Buscar factura que contenga líneas del albarán
-        foreach ($facturas as $factura) {
-            // Verificar si alguna línea de esta factura referencia al albarán
-            $sql = "SELECT COUNT(*) as total FROM lineasfacturascli
-                    WHERE idfactura = " . $factura->idfactura . "
-                    AND idalbaran = " . $albaran->idalbaran;
-
-            $result = $this->dataBase->select($sql);
-            if (!empty($result) && $result[0]['total'] > 0) {
-                $this->downloadByInvoiceId($factura->idfactura);
-                return;
-            }
+        $result = $this->dataBase->select($sql);
+        if (!empty($result) && isset($result[0]['idfactura'])) {
+            $this->downloadByInvoiceId((int)$result[0]['idfactura']);
+            return;
         }
 
         $this->sendError(404, "El albarán {$albaran->codigo} no tiene factura asociada todavía");
