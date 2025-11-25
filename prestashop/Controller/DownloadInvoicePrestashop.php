@@ -3,6 +3,7 @@
 namespace FacturaScripts\Plugins\Prestashop\Controller;
 
 use FacturaScripts\Core\Base\Controller;
+use FacturaScripts\Core\Base\DataBase\DataBaseWhere;
 use FacturaScripts\Core\Tools;
 use FacturaScripts\Dinamic\Model\AlbaranCliente;
 use FacturaScripts\Dinamic\Model\FacturaCliente;
@@ -56,7 +57,7 @@ class DownloadInvoicePrestashop extends Controller
     {
         // Buscar albarán que tenga esta referencia en numero2
         $albaranModel = new AlbaranCliente();
-        $where = [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('numero2', $orderRef)];
+        $where = [new DataBaseWhere('numero2', $orderRef)];
         $albaranes = $albaranModel->all($where, [], 0, 1);
 
         if (empty($albaranes)) {
@@ -66,13 +67,35 @@ class DownloadInvoicePrestashop extends Controller
 
         $albaran = $albaranes[0];
 
-        // Buscar factura asociada al albarán
-        if (empty($albaran->idfactura)) {
-            $this->sendError(404, "El albarán {$albaran->codigo} no tiene factura asociada todavía");
+        // Método 1: Buscar por idfactura del albarán
+        if (!empty($albaran->idfactura)) {
+            $this->downloadByInvoiceId($albaran->idfactura);
             return;
         }
 
-        $this->downloadByInvoiceId($albaran->idfactura);
+        // Método 2: Buscar factura que tenga el código del albarán
+        $facturaModel = new FacturaCliente();
+        $whereFactura = [
+            new DataBaseWhere('codcliente', $albaran->codcliente),
+            new DataBaseWhere('codalmacen', $albaran->codalmacen)
+        ];
+        $facturas = $facturaModel->all($whereFactura, ['fecha' => 'DESC'], 0, 50);
+
+        // Buscar factura que contenga líneas del albarán
+        foreach ($facturas as $factura) {
+            // Verificar si alguna línea de esta factura referencia al albarán
+            $sql = "SELECT COUNT(*) as total FROM lineasfacturascli
+                    WHERE idfactura = " . $factura->idfactura . "
+                    AND idalbaran = " . $albaran->idalbaran;
+
+            $result = $this->dataBase->select($sql);
+            if (!empty($result) && $result[0]['total'] > 0) {
+                $this->downloadByInvoiceId($factura->idfactura);
+                return;
+            }
+        }
+
+        $this->sendError(404, "El albarán {$albaran->codigo} no tiene factura asociada todavía");
     }
 
     /**
