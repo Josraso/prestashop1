@@ -95,6 +95,27 @@ class OrdersDownload
 
             // Filtro de ID mínimo (SIEMPRE usado)
             $importSinceId = (int)$this->config->import_since_id;
+
+            // IMPORTANTE: Si el usuario cambió la fecha a más antigua, permitir retroceder
+            // Para ello, buscar si hay pedidos ANTES del import_since_id actual que cumplan la nueva fecha
+            if (!empty($importSinceDate) && $importSinceId > 0) {
+                Tools::log()->info("Verificando si hay pedidos anteriores al ID {$importSinceId} que cumplan con la fecha {$importSinceDate}...");
+
+                // Buscar pedidos desde ID 1 hasta import_since_id-1 con la fecha configurada
+                $oldOrders = $this->connection->getOrders(10, null, [
+                    'id' => '[1,' . ($importSinceId - 1) . ']',
+                    'date_add' => '[' . $importSinceDate . ',]'
+                ]);
+
+                if (!empty($oldOrders)) {
+                    Tools::log()->warning("⚠ Se encontraron " . count($oldOrders) . " pedidos antiguos que cumplen con la nueva fecha.");
+                    Tools::log()->warning("⚠ Reseteando import_since_id a 0 para procesarlos desde el principio.");
+                    $importSinceId = 0;
+                    $this->config->import_since_id = 0;
+                    $this->config->save();
+                }
+            }
+
             if ($importSinceId > 0) {
                 Tools::log()->info("Filtro de ID mínimo: {$importSinceId}");
             }

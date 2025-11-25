@@ -109,7 +109,7 @@ class ListPedidosPrestashop extends Controller
             }
 
             // Obtener pedidos con filtros - usamos un límite grande para filtrar luego
-            $ordersXml = $connection->getOrders(500, $filters);
+            $ordersXml = $connection->getOrders(500, null, $filters);
 
             if (!$ordersXml) {
                 Tools::log()->error('No se pudieron obtener pedidos de PrestaShop');

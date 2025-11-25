@@ -114,8 +114,9 @@ class PrestashopConnection
      *
      * @param int|null $limit Límite de resultados
      * @param int|null $sinceId Filtro por ID mínimo (desde qué pedido)
+     * @param array $customFilters Filtros adicionales personalizados
      */
-    public function getOrders(?int $limit = null, ?int $sinceId = null): array
+    public function getOrders(?int $limit = null, ?int $sinceId = null, array $customFilters = []): array
     {
         if (!$this->isConnected()) {
             return [];
@@ -140,6 +141,13 @@ class PrestashopConnection
             // Filtro por ID mínimo
             if ($sinceId) {
                 $params['filter[id]'] = '[' . $sinceId . ',999999999]';
+            }
+
+            // Añadir filtros personalizados
+            foreach ($customFilters as $key => $value) {
+                if ($key === 'date_add' || $key === 'id') {
+                    $params['filter[' . $key . ']'] = $value;
+                }
             }
 
             // Llamar a la API con parámetros correctos
