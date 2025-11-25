@@ -42,6 +42,12 @@ class PrestashopConfig extends ModelClass
     /** @var bool */
     public $use_ws_key_param;
 
+    /** @var bool */
+    public $webhook_enabled;
+
+    /** @var string */
+    public $webhook_token;
+
     public static function primaryColumn(): string
     {
         return 'id';
@@ -60,6 +66,25 @@ class PrestashopConfig extends ModelClass
         $this->import_since_id = 0; // Por defecto, importar desde el principio
         $this->import_since_date = ''; // Fecha fija desde la que siempre buscar
         $this->use_ws_key_param = false; // Por defecto, usar Basic Auth
+        $this->webhook_enabled = false;
+        $this->webhook_token = $this->generateWebhookToken();
+    }
+
+    /**
+     * Genera un token aleatorio para el webhook
+     */
+    private function generateWebhookToken(): string
+    {
+        return bin2hex(random_bytes(16)); // Token de 32 caracteres
+    }
+
+    /**
+     * Regenera el token del webhook
+     */
+    public function regenerateWebhookToken(): string
+    {
+        $this->webhook_token = $this->generateWebhookToken();
+        return $this->webhook_token;
     }
 
     /**

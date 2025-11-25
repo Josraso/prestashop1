@@ -53,6 +53,17 @@
         <null>NO</null>
         <default>false</default>
     </column>
+    <column>
+        <name>webhook_enabled</name>
+        <type>boolean</type>
+        <null>NO</null>
+        <default>false</default>
+    </column>
+    <column>
+        <name>webhook_token</name>
+        <type>character varying(100)</type>
+        <null>YES</null>
+    </column>
     <constraint>
         <name>prestashop_config_pkey</name>
         <type>PRIMARY KEY (id)</type>
