@@ -97,10 +97,10 @@ class OrdersDownload
             }
 
             // Obtener pedidos con límite para evitar timeout
-            Tools::log()->info('[OrdersDownload::batch] Obteniendo pedidos desde la API (límite: 20, desde ID: ' . ($importSinceId > 0 ? $importSinceId : 'todos') . ')...');
+            Tools::log()->info('[OrdersDownload::batch] Obteniendo pedidos desde la API (límite: 50, desde ID: ' . ($importSinceId > 0 ? $importSinceId : 'todos') . ')...');
 
             $orders = $this->connection->getOrders(
-                20, // Límite de 20 pedidos por ejecución
+                50, // Límite de 50 pedidos por ejecución
                 $importSinceId > 0 ? $importSinceId : null
             );
 
@@ -114,14 +114,21 @@ class OrdersDownload
             foreach ($orders as $orderXml) {
                 $orderId = (int)$orderXml->id;
                 $orderRef = (string)$orderXml->reference;
-                $orderDate = (string)$orderXml->date_add;
 
-                Tools::log()->info("[OrdersDownload::batch] >>> Pedido ID: {$orderId}, Ref: {$orderRef}, Fecha: {$orderDate}");
+                // IMPORTANTE: Usar la fecha del ÚLTIMO ESTADO, no la fecha de creación
+                // Esto debe coincidir con la fecha que se usa al crear el albarán
+                $orderDate = $this->getLastOrderStatusDate($orderXml, $orderId);
+                if (!$orderDate) {
+                    // Fallback a fecha de creación si no hay historial de estados
+                    $orderDate = (string)$orderXml->date_add;
+                }
+
+                Tools::log()->info("[OrdersDownload::batch] >>> Pedido ID: {$orderId}, Ref: {$orderRef}, Fecha último estado: {$orderDate}");
 
                 try {
-                    // Filtro por fecha: Si está configurado, verificar fecha del pedido
+                    // Filtro por fecha: Si está configurado, verificar fecha del ÚLTIMO ESTADO del pedido
                     if ($importSinceDate && $orderDate < $importSinceDate) {
-                        Tools::log()->info("[OrdersDownload::batch] ⊘ OMITIDO POR FECHA: {$orderRef} ({$orderDate} < {$importSinceDate})");
+                        Tools::log()->info("[OrdersDownload::batch] ⊘ OMITIDO POR FECHA: {$orderRef} (último estado: {$orderDate} < {$importSinceDate})");
                         $skipped++; // Contar como omitido
                         continue;
                     }
