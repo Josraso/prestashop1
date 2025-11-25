@@ -75,6 +75,15 @@
                     </a>
                 </li>
                 <li class="nav-item">
+                    <a class="nav-link {% if fsc.activeTab == 'webhooks' %}active{% endif %}"
+                       id="webhooks-tab"
+                       data-toggle="tab"
+                       href="#webhooks"
+                       role="tab">
+                        <i class="fas fa-bolt"></i> Webhooks
+                    </a>
+                </li>
+                <li class="nav-item">
                     <a class="nav-link {% if fsc.activeTab == 'help' %}active{% endif %}"
                        id="help-tab"
                        data-toggle="tab"
@@ -553,7 +562,199 @@
                 </div>
 
                 {# ============================================ #}
-                {# TAB 5: AYUDA                                #}
+                {# TAB 5: WEBHOOKS                             #}
+                {# ============================================ #}
+                <div class="tab-pane fade {% if fsc.activeTab == 'webhooks' %}show active{% endif %}"
+                     id="webhooks"
+                     role="tabpanel">
+
+                    {# Configuración de Webhooks #}
+                    <div class="card shadow mb-4">
+                        <div class="card-header py-3">
+                            <h6 class="m-0 font-weight-bold text-primary">
+                                <i class="fas fa-bolt"></i> Configuración de Webhooks
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info">
+                                <strong><i class="fas fa-info-circle"></i> ¿Qué son los webhooks?</strong><br>
+                                Los webhooks permiten que PrestaShop notifique <strong>inmediatamente</strong> a FacturaScripts cuando se crea o actualiza un pedido.
+                                Esto significa que los pedidos se importan en <strong>tiempo real</strong> (en menos de 1 segundo), en lugar de esperar a que el cron se ejecute.
+                            </div>
+
+                            <form action="{{ fsc.url() }}?tab=webhooks" method="post" class="form">
+                                <input type="hidden" name="action" value="save-webhooks"/>
+                                {{ formToken() }}
+
+                                <div class="form-group row">
+                                    <label class="col-sm-3 col-form-label">
+                                        Estado de Webhooks
+                                    </label>
+                                    <div class="col-sm-9">
+                                        <div class="custom-control custom-switch">
+                                            <input type="checkbox"
+                                                   class="custom-control-input"
+                                                   id="webhook_enabled"
+                                                   name="webhook_enabled"
+                                                   value="1"
+                                                   {% if fsc.config.webhook_enabled %}checked{% endif %}>
+                                            <label class="custom-control-label" for="webhook_enabled">
+                                                <strong>{% if fsc.config.webhook_enabled %}<span class="text-success">✓ Activado</span>{% else %}<span class="text-muted">✗ Desactivado</span>{% endif %}</strong>
+                                            </label>
+                                        </div>
+                                        <small class="form-text text-muted">
+                                            Activa esta opción para recibir notificaciones en tiempo real desde PrestaShop
+                                        </small>
+                                    </div>
+                                </div>
+
+                                <div class="text-right">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-save"></i> Guardar
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    {% if fsc.config.webhook_enabled %}
+                        {# URL del Webhook #}
+                        <div class="card shadow mb-4 border-success">
+                            <div class="card-header py-3 bg-success text-white">
+                                <h6 class="m-0 font-weight-bold">
+                                    <i class="fas fa-link"></i> URL del Webhook
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>Copia esta URL y configúrala en tu módulo de webhooks de PrestaShop:</strong></p>
+
+                                <div class="input-group mb-3">
+                                    <input type="text"
+                                           class="form-control font-weight-bold"
+                                           id="webhook-url"
+                                           value="{{ fsc.getWebhookUrl() }}"
+                                           readonly
+                                           style="background-color: #f8f9fa; font-size: 13px;">
+                                    <div class="input-group-append">
+                                        <button class="btn btn-outline-secondary" type="button" onclick="copyWebhookUrl()">
+                                            <i class="fas fa-copy"></i> Copiar
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="alert alert-warning">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    <strong>Importante:</strong> Esta URL contiene un token secreto. No la compartas públicamente.
+                                </div>
+                            </div>
+                        </div>
+
+                        {# Token de Seguridad #}
+                        <div class="card shadow mb-4">
+                            <div class="card-header py-3">
+                                <h6 class="m-0 font-weight-bold text-primary">
+                                    <i class="fas fa-key"></i> Token de Seguridad
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <p>El token actual es:</p>
+                                <div class="input-group mb-3">
+                                    <input type="text"
+                                           class="form-control font-monospace"
+                                           value="{{ fsc.config.webhook_token }}"
+                                           readonly
+                                           style="background-color: #f8f9fa; letter-spacing: 1px;">
+                                    <div class="input-group-append">
+                                        <form action="{{ fsc.url() }}?tab=webhooks" method="post" style="display: inline;">
+                                            <input type="hidden" name="action" value="regenerate-token"/>
+                                            {{ formToken() }}
+                                            <button class="btn btn-warning" type="submit" onclick="return confirm('¿Estás seguro? Tendrás que actualizar la URL en PrestaShop.')">
+                                                <i class="fas fa-sync"></i> Regenerar Token
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+
+                                <small class="text-muted">
+                                    <i class="fas fa-info-circle"></i> Regenera el token si crees que ha sido comprometido.
+                                    <strong>Importante:</strong> Deberás actualizar la URL en PrestaShop después de regenerar.
+                                </small>
+                            </div>
+                        </div>
+
+                        {# Instrucciones de Configuración #}
+                        <div class="card shadow mb-4">
+                            <div class="card-header py-3">
+                                <h6 class="m-0 font-weight-bold text-primary">
+                                    <i class="fas fa-book"></i> Cómo configurar el módulo en PrestaShop
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <h6><i class="fas fa-puzzle-piece"></i> Paso 1: Instalar módulo de webhooks en PrestaShop</h6>
+                                <p>Necesitas un módulo que envíe webhooks cuando se creen o actualicen pedidos. Opciones recomendadas:</p>
+                                <ul>
+                                    <li><strong>Opción 1:</strong> Módulo personalizado (próximamente disponible en este plugin)</li>
+                                    <li><strong>Opción 2:</strong> Módulos del marketplace de PrestaShop como "Webhook Manager" o similares</li>
+                                    <li><strong>Opción 3:</strong> Desarrollar un módulo personalizado</li>
+                                </ul>
+
+                                <h6 class="mt-4"><i class="fas fa-cog"></i> Paso 2: Configurar el webhook</h6>
+                                <p>En el módulo de webhooks de PrestaShop, configura:</p>
+                                <ol>
+                                    <li><strong>URL del webhook:</strong> Copia la URL mostrada arriba</li>
+                                    <li><strong>Evento:</strong> Selecciona "Cuando se crea/actualiza un pedido"</li>
+                                    <li><strong>Método HTTP:</strong> POST</li>
+                                    <li><strong>Payload:</strong> El módulo debe enviar al menos el <code>order_id</code> del pedido</li>
+                                </ol>
+
+                                <h6 class="mt-4"><i class="fas fa-check-circle"></i> Paso 3: Probar</h6>
+                                <p>Crea un pedido de prueba en PrestaShop y verifica que:</p>
+                                <ul>
+                                    <li>El pedido se importe automáticamente en FacturaScripts (sin esperar al cron)</li>
+                                    <li>Revisa el <a href="DashboardPrestashop" target="_blank">Dashboard PrestaShop</a> para ver si aparece con origen "webhook"</li>
+                                </ul>
+
+                                <div class="alert alert-success mt-3">
+                                    <i class="fas fa-lightbulb"></i>
+                                    <strong>Ventaja:</strong> Con webhooks configurados, los pedidos se importan <strong>instantáneamente</strong> en lugar de esperar hasta 15 minutos al siguiente cron.
+                                </div>
+                            </div>
+                        </div>
+
+                        {# Historial de Webhooks #}
+                        <div class="card shadow mb-4">
+                            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                                <h6 class="m-0 font-weight-bold text-primary">
+                                    <i class="fas fa-history"></i> Historial de Webhooks Recibidos
+                                </h6>
+                                <span class="badge badge-info">Últimos 20</span>
+                            </div>
+                            <div class="card-body">
+                                <p class="text-muted">
+                                    Aquí verás los webhooks recibidos desde PrestaShop. Útil para depurar problemas.
+                                </p>
+                                <p class="text-center text-muted">
+                                    <i class="fas fa-inbox fa-3x mb-2"></i><br>
+                                    <em>Por implementar: Tabla con historial de webhooks</em>
+                                </p>
+                            </div>
+                        </div>
+                    {% else %}
+                        {# Mensaje si no está activado #}
+                        <div class="card shadow mb-4 border-secondary">
+                            <div class="card-body text-center py-5">
+                                <i class="fas fa-bolt fa-4x text-muted mb-3"></i>
+                                <h5 class="text-muted">Webhooks Desactivados</h5>
+                                <p class="text-muted">
+                                    Activa los webhooks arriba para comenzar a recibir notificaciones en tiempo real desde PrestaShop.
+                                </p>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+
+                {# ============================================ #}
+                {# TAB 6: AYUDA                                #}
                 {# ============================================ #}
                 <div class="tab-pane fade {% if fsc.activeTab == 'help' %}show active{% endif %}"
                      id="help"
@@ -678,6 +879,19 @@ function loadStates() {
     }).then(() => {
         location.reload();
     });
+}
+
+function copyWebhookUrl() {
+    const urlInput = document.getElementById('webhook-url');
+    urlInput.select();
+    urlInput.setSelectionRange(0, 99999); // Para móviles
+
+    try {
+        document.execCommand('copy');
+        alert('✓ URL copiada al portapapeles');
+    } catch (err) {
+        alert('Error al copiar. Por favor, cópiala manualmente.');
+    }
 }
 </script>
 {% endblock %}

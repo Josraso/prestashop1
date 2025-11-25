@@ -88,6 +88,14 @@ class ConfigPrestashop extends Controller
             case 'import-batch':
                 $this->importBatchAction();
                 break;
+
+            case 'save-webhooks':
+                $this->saveWebhooksAction();
+                break;
+
+            case 'regenerate-token':
+                $this->regenerateTokenAction();
+                break;
         }
     }
 
@@ -429,5 +437,67 @@ class ConfigPrestashop extends Controller
                 htmlspecialchars($e->getMessage()) .
                 '</div>';
         }
+    }
+
+    /**
+     * Guarda la configuración de webhooks
+     */
+    private function saveWebhooksAction(): void
+    {
+        if (!$this->permissions->allowUpdate) {
+            Tools::log()->warning('No tienes permisos para guardar');
+            return;
+        }
+
+        $this->config->webhook_enabled = (bool)$this->request->request->get('webhook_enabled', false);
+
+        // Si se está activando por primera vez y no hay token, generar uno
+        if ($this->config->webhook_enabled && empty($this->config->webhook_token)) {
+            $this->config->generateWebhookToken();
+        }
+
+        if ($this->config->save()) {
+            Tools::log()->info('Configuración de webhooks guardada correctamente');
+            $this->activeTab = 'webhooks';
+        } else {
+            Tools::log()->error('Error al guardar la configuración de webhooks');
+        }
+    }
+
+    /**
+     * Regenera el token de webhook
+     */
+    private function regenerateTokenAction(): void
+    {
+        if (!$this->permissions->allowUpdate) {
+            Tools::log()->warning('No tienes permisos para regenerar el token');
+            return;
+        }
+
+        $this->config->regenerateWebhookToken();
+
+        if ($this->config->save()) {
+            Tools::log()->info('Token de webhook regenerado correctamente');
+            $this->activeTab = 'webhooks';
+        } else {
+            Tools::log()->error('Error al regenerar el token de webhook');
+        }
+    }
+
+    /**
+     * Obtiene la URL completa del webhook
+     */
+    public function getWebhookUrl(): string
+    {
+        if (empty($this->config->webhook_token)) {
+            return '';
+        }
+
+        // Obtener la URL base de FacturaScripts
+        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $baseUrl = $protocol . $host;
+
+        return $baseUrl . '/WebhookPrestashop?token=' . $this->config->webhook_token;
     }
 }
