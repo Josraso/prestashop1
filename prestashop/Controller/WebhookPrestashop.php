@@ -35,7 +35,7 @@ class WebhookPrestashop extends Controller
         }
 
         // Obtener IP del cliente
-        $ip = $this->request->getClientIp();
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 
         // Obtener payload
         $rawPayload = file_get_contents('php://input');
