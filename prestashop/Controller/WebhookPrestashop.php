@@ -22,6 +22,12 @@ class WebhookPrestashop extends Controller
     {
         parent::publicCore($response);
 
+        // Si es GET, mostrar mensaje informativo
+        if ($this->request->getMethod() === 'GET') {
+            $this->showInfoPage();
+            return;
+        }
+
         // Solo aceptar POST
         if ($this->request->getMethod() !== 'POST') {
             $this->sendResponse(405, ['error' => 'Método no permitido. Solo POST.']);
@@ -190,6 +196,172 @@ class WebhookPrestashop extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Muestra página informativa cuando se accede con GET
+     */
+    private function showInfoPage(): void
+    {
+        $config = PrestashopConfig::getActive();
+        $webhookEnabled = $config && $config->webhook_enabled ? 'Sí' : 'No';
+        $hasToken = $config && !empty($config->webhook_token);
+
+        http_response_code(200);
+        header('Content-Type: text/html; charset=utf-8');
+
+        echo '<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webhook PrestaShop - FacturaScripts</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 600px;
+            padding: 40px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+        .status {
+            background: #f0f0f0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #ddd;
+        }
+        .status-item:last-child {
+            border-bottom: none;
+        }
+        .status-label {
+            font-weight: 600;
+            color: #555;
+        }
+        .status-value {
+            color: #333;
+        }
+        .status-value.active {
+            color: #10b981;
+            font-weight: 600;
+        }
+        .status-value.inactive {
+            color: #ef4444;
+            font-weight: 600;
+        }
+        .info-box {
+            background: #eff6ff;
+            border-left: 4px solid #3b82f6;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        .info-box h3 {
+            color: #1e40af;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        .info-box p {
+            color: #1e3a8a;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+        .warning-box {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+        }
+        .warning-box strong {
+            color: #92400e;
+        }
+        .warning-box p {
+            color: #78350f;
+            line-height: 1.6;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #999;
+            font-size: 13px;
+        }
+        .icon {
+            display: inline-block;
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1><span class="icon">⚡</span>Webhook PrestaShop</h1>
+        <p class="subtitle">Endpoint de integración FacturaScripts</p>
+
+        <div class="status">
+            <div class="status-item">
+                <span class="status-label">Estado del endpoint:</span>
+                <span class="status-value active">✓ Operativo</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Webhooks habilitados:</span>
+                <span class="status-value ' . ($config && $config->webhook_enabled ? 'active">✓ Sí' : 'inactive">✗ No') . '</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Token configurado:</span>
+                <span class="status-value ' . ($hasToken ? 'active">✓ Sí' : 'inactive">✗ No') . '</span>
+            </div>
+        </div>
+
+        <div class="info-box">
+            <h3>ℹ️ Información</h3>
+            <p>
+                Este es un endpoint público diseñado para recibir webhooks desde PrestaShop.
+                Solo acepta peticiones <strong>POST</strong> con un token válido en la URL.
+            </p>
+        </div>
+
+        <div class="warning-box">
+            <strong>⚠️ Nota importante</strong>
+            <p>
+                Esta URL no debe ser visitada directamente en el navegador.
+                Solo debe ser utilizada por PrestaShop para enviar notificaciones automáticas de pedidos.
+            </p>
+        </div>
+
+        <div class="footer">
+            FacturaScripts PrestaShop Plugin v1.0
+        </div>
+    </div>
+</body>
+</html>';
+        die();
     }
 
     /**
