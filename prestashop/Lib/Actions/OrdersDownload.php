@@ -101,22 +101,27 @@ class OrdersDownload
             if (!empty($importSinceDate) && $importSinceId > 0) {
                 Tools::log()->info("Verificando si hay pedidos anteriores al ID {$importSinceId} que cumplan con la fecha {$importSinceDate}...");
 
-                // Buscar pedidos por fecha solamente (API PrestaShop no acepta múltiples filtros complejos)
-                $testOrders = $this->connection->getOrders(50, null, [
-                    'date_add' => '[' . $importSinceDate . ',]'
-                ]);
+                // NO pasar customFilters - la API ya filtra por estado y no acepta más filtros complejos
+                // Obtenemos pedidos del estado configurado y filtramos en PHP
+                $testOrders = $this->connection->getOrders(100, null);
 
-                // Filtrar manualmente en PHP los que tienen ID < import_since_id
-                $oldOrders = array_filter($testOrders, function($order) use ($importSinceId) {
-                    return (int)$order->id < $importSinceId;
-                });
+                if ($testOrders === false || $testOrders === null) {
+                    Tools::log()->error("Error al obtener pedidos para verificación de retroceso");
+                } else {
+                    // Filtrar manualmente en PHP: ID < import_since_id Y fecha >= import_since_date
+                    $oldOrders = array_filter($testOrders, function($order) use ($importSinceId, $importSinceDate) {
+                        $orderId = (int)$order->id;
+                        $orderDate = substr((string)$order->date_add, 0, 10); // YYYY-MM-DD
+                        return $orderId < $importSinceId && $orderDate >= $importSinceDate;
+                    });
 
-                if (!empty($oldOrders)) {
-                    Tools::log()->warning("⚠ Se encontraron " . count($oldOrders) . " pedidos antiguos que cumplen con la nueva fecha.");
-                    Tools::log()->warning("⚠ Reseteando import_since_id a 0 para procesarlos desde el principio.");
-                    $importSinceId = 0;
-                    $this->config->import_since_id = 0;
-                    $this->config->save();
+                    if (!empty($oldOrders)) {
+                        Tools::log()->warning("⚠ Se encontraron " . count($oldOrders) . " pedidos antiguos que cumplen con la nueva fecha.");
+                        Tools::log()->warning("⚠ Reseteando import_since_id a 0 para procesarlos desde el principio.");
+                        $importSinceId = 0;
+                        $this->config->import_since_id = 0;
+                        $this->config->save();
+                    }
                 }
             }
 

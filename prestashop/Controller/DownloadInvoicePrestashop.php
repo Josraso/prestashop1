@@ -18,6 +18,9 @@ class DownloadInvoicePrestashop extends Controller
     {
         parent::publicCore($response);
 
+        // Desactivar renderizado de plantilla Twig
+        $this->setTemplate(false);
+
         // Si es GET, mostrar mensaje informativo
         if ($this->request->getMethod() === 'GET') {
             http_response_code(200);
