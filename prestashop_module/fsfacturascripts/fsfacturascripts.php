@@ -317,33 +317,29 @@ class FsFacturaScripts extends Module
         $id_order = (int)$params['id_order'];
         $order = new Order($id_order);
 
-        // Obtener datos de FacturaScripts
+        // SIEMPRE mostrar botón - el endpoint buscará la factura aunque no esté en BD
+        $download_url = $this->getDownloadUrl($order->reference);
+
+        // Obtener datos de FacturaScripts si existen
         $fs_data = $this->getFacturaScriptsData($order->reference);
 
-        if (!$fs_data || empty($fs_data['fs_factura_id'])) {
-            return '<div class="panel" style="margin-bottom: 15px;">
-                <div class="panel-heading" style="padding: 10px 15px;">
-                    <i class="icon-file-pdf-o"></i> FacturaScripts
-                </div>
-                <div class="panel-body" style="padding: 10px 15px;">
-                    <p style="margin: 0; font-size: 13px; color: #999;">
-                        <i class="icon-info-circle"></i> Factura no disponible aún
-                    </p>
-                </div>
-            </div>';
+        $factura_info = '';
+        if ($fs_data && !empty($fs_data['fs_factura_code'])) {
+            $factura_info = '<p style="margin: 0 0 10px 0;"><strong>Factura:</strong> ' . pSQL($fs_data['fs_factura_code']) . '</p>';
         }
-
-        $download_url = $this->getDownloadUrl($order->reference);
 
         return '<div class="panel" style="margin-bottom: 15px;">
             <div class="panel-heading" style="padding: 10px 15px;">
                 <i class="icon-file-pdf-o"></i> FacturaScripts
             </div>
             <div class="panel-body" style="padding: 15px;">
-                <p style="margin: 0 0 10px 0;"><strong>Factura:</strong> ' . pSQL($fs_data['fs_factura_code']) . '</p>
+                ' . $factura_info . '
                 <a href="' . $download_url . '" target="_blank" class="btn btn-primary btn-sm">
-                    <i class="icon-download"></i> Descargar PDF
+                    <i class="icon-download"></i> Descargar Factura
                 </a>
+                <p style="margin: 10px 0 0 0; font-size: 11px; color: #999;">
+                    <i class="icon-info-circle"></i> Si la factura no existe aún, verás un mensaje de error.
+                </p>
             </div>
         </div>';
     }
