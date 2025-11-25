@@ -582,6 +582,10 @@ class ConfigPrestashop extends Controller
 
         $this->activeTab = 'webhooks';
         $this->loadRecentWebhooks(); // Recargar para mostrar el nuevo webhook
+
+        // Redirigir para refrescar la página
+        header('Location: ' . $this->url() . '?tab=webhooks');
+        exit;
     }
 
     /**

@@ -321,21 +321,28 @@ class FsFacturaScripts extends Module
         $fs_data = $this->getFacturaScriptsData($order->reference);
 
         if (!$fs_data || empty($fs_data['fs_factura_id'])) {
-            return '<div class="alert alert-info">
-                <i class="icon-info"></i> Esta factura aún no está disponible en FacturaScripts
+            return '<div class="panel" style="margin-bottom: 15px;">
+                <div class="panel-heading" style="padding: 10px 15px;">
+                    <i class="icon-file-pdf-o"></i> FacturaScripts
+                </div>
+                <div class="panel-body" style="padding: 10px 15px;">
+                    <p style="margin: 0; font-size: 13px; color: #999;">
+                        <i class="icon-info-circle"></i> Factura no disponible aún
+                    </p>
+                </div>
             </div>';
         }
 
         $download_url = $this->getDownloadUrl($order->reference);
 
-        return '<div class="panel">
-            <div class="panel-heading">
+        return '<div class="panel" style="margin-bottom: 15px;">
+            <div class="panel-heading" style="padding: 10px 15px;">
                 <i class="icon-file-pdf-o"></i> FacturaScripts
             </div>
-            <div class="panel-body">
-                <p><strong>Factura generada:</strong> ' . pSQL($fs_data['fs_factura_code']) . '</p>
-                <a href="' . $download_url . '" target="_blank" class="btn btn-primary">
-                    <i class="icon-download"></i> Descargar Factura PDF
+            <div class="panel-body" style="padding: 15px;">
+                <p style="margin: 0 0 10px 0;"><strong>Factura:</strong> ' . pSQL($fs_data['fs_factura_code']) . '</p>
+                <a href="' . $download_url . '" target="_blank" class="btn btn-primary btn-sm">
+                    <i class="icon-download"></i> Descargar PDF
                 </a>
             </div>
         </div>';

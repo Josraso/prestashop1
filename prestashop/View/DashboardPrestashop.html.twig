@@ -341,4 +341,36 @@
 }
 </style>
 
+<script>
+// JavaScript para hacer funcionar las pestañas
+document.addEventListener('DOMContentLoaded', function() {
+    const tabs = document.querySelectorAll('#importTabs a[data-toggle="tab"]');
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', function(e) {
+            e.preventDefault();
+
+            // Remover clase active de todos los tabs
+            tabs.forEach(t => t.classList.remove('active'));
+
+            // Añadir clase active al tab clickeado
+            this.classList.add('active');
+
+            // Ocultar todos los tab-panes
+            const panes = document.querySelectorAll('#importTabsContent .tab-pane');
+            panes.forEach(pane => {
+                pane.classList.remove('show', 'active');
+            });
+
+            // Mostrar el tab-pane correspondiente
+            const targetId = this.getAttribute('href');
+            const targetPane = document.querySelector(targetId);
+            if (targetPane) {
+                targetPane.classList.add('show', 'active');
+            }
+        });
+    });
+});
+</script>
+
 {% endblock %}
