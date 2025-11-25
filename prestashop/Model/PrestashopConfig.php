@@ -67,15 +67,16 @@ class PrestashopConfig extends ModelClass
         $this->import_since_date = ''; // Fecha fija desde la que siempre buscar
         $this->use_ws_key_param = false; // Por defecto, usar Basic Auth
         $this->webhook_enabled = false;
-        $this->webhook_token = $this->generateWebhookToken();
+        $this->generateWebhookToken(); // Genera y asigna el token automáticamente
     }
 
     /**
      * Genera un token aleatorio para el webhook
      */
-    private function generateWebhookToken(): string
+    public function generateWebhookToken(): string
     {
-        return bin2hex(random_bytes(16)); // Token de 32 caracteres
+        $this->webhook_token = bin2hex(random_bytes(16)); // Token de 32 caracteres
+        return $this->webhook_token;
     }
 
     /**
@@ -83,8 +84,7 @@ class PrestashopConfig extends ModelClass
      */
     public function regenerateWebhookToken(): string
     {
-        $this->webhook_token = $this->generateWebhookToken();
-        return $this->webhook_token;
+        return $this->generateWebhookToken();
     }
 
     /**
