@@ -90,27 +90,18 @@ class OrdersDownload
                 Tools::log()->info("Buscando pedidos desde fecha: {$importSinceDate}");
             }
 
-            // IMPORTANTE: Filtro de ID mínimo SOLO si NO hay filtro de fecha
-            // Si hay filtro de fecha, debemos consultar TODOS los pedidos (sin filtro de ID)
-            // para no perdernos pedidos que cambiaron de estado después
-            $importSinceId = null;
-            if (empty($importSinceDate)) {
-                // Solo usar import_since_id si NO hay filtro de fecha
-                $importSinceId = (int)$this->config->import_since_id;
-                if ($importSinceId > 0) {
-                    Tools::log()->info("Filtro de ID mínimo: {$importSinceId} (sin filtro de fecha)");
-                }
-            } else {
-                // Con filtro de fecha, NO usar filtro de ID para no perdernos pedidos
-                Tools::log()->info("Filtro de fecha activo: NO se usará filtro de ID para evitar omitir pedidos que cambien de estado");
+            // Filtro de ID mínimo (SIEMPRE usado)
+            $importSinceId = (int)$this->config->import_since_id;
+            if ($importSinceId > 0) {
+                Tools::log()->info("Filtro de ID mínimo: {$importSinceId}");
             }
 
             // Obtener pedidos con límite para evitar timeout
-            Tools::log()->info('[OrdersDownload::batch] Obteniendo pedidos desde la API (límite: 50' . ($importSinceId ? ", desde ID: {$importSinceId}" : ', sin filtro de ID') . ')...');
+            Tools::log()->info('[OrdersDownload::batch] Obteniendo pedidos desde la API (límite: 50' . ($importSinceId ? ", desde ID: {$importSinceId}" : '') . ')...');
 
             $orders = $this->connection->getOrders(
                 50, // Límite de 50 pedidos por ejecución
-                $importSinceId // null si hay filtro de fecha, ID si no lo hay
+                $importSinceId > 0 ? $importSinceId : null
             );
 
             if (empty($orders)) {
@@ -173,9 +164,9 @@ class OrdersDownload
             Tools::log()->info('[OrdersDownload::batch] ===========================================');
 
             // IMPORTANTE: Si NO se importó ninguno, avanzar el puntero automáticamente
-            // PERO SOLO si NO hay filtro de fecha (para no perdernos pedidos que cambien de estado)
-            if ($imported == 0 && count($orders) > 0 && empty($importSinceDate)) {
-                // Solo avanzar si NO hay filtro de fecha configurado
+            // Esto permite atravesar pedidos viejos cuando hay filtro de fecha
+            if ($imported == 0 && count($orders) > 0) {
+                // Obtener el último ID procesado
                 $lastOrderXml = end($orders);
                 $lastOrderId = (int)$lastOrderXml->id;
 
@@ -185,9 +176,10 @@ class OrdersDownload
 
                 Tools::log()->warning("[OrdersDownload::batch] ⚠ NO se importó ningún pedido en este lote.");
                 Tools::log()->warning("[OrdersDownload::batch] ⚠ Avanzando automáticamente import_since_id a {$lastOrderId} para continuar en la próxima ejecución.");
-            } elseif ($imported == 0 && count($orders) > 0 && !empty($importSinceDate)) {
-                Tools::log()->info("[OrdersDownload::batch] ℹ NO se importó ningún pedido, pero hay filtro de fecha activo.");
-                Tools::log()->info("[OrdersDownload::batch] ℹ NO se avanza import_since_id para no perdernos pedidos que cambien de estado.");
+
+                if (!empty($importSinceDate)) {
+                    Tools::log()->info("[OrdersDownload::batch] ℹ Con filtro de fecha activo, esto permite atravesar pedidos viejos hasta encontrar los que cumplan la fecha.");
+                }
             }
 
             if ($imported > 0) {
