@@ -310,29 +310,32 @@ class FsFacturaScripts extends Module
     }
 
     /**
-     * Hook: Mostrar botón de descarga en ficha del pedido (admin)
+     * Hook: Mostrar info de FacturaScripts en ficha del pedido (admin)
      */
     public function hookDisplayAdminOrder($params)
     {
         $id_order = (int)$params['id_order'];
         $order = new Order($id_order);
 
-        // SIEMPRE mostrar botón - el endpoint buscará la factura aunque no esté en BD
-        $download_url = $this->getDownloadUrl($order->reference);
-
         // Obtener datos de FacturaScripts si existen
         $fs_data = $this->getFacturaScriptsData($order->reference);
 
-        $factura_info = '';
-        if ($fs_data && !empty($fs_data['fs_factura_code'])) {
-            $factura_info = '<strong style="font-size: 12px;">Factura:</strong> ' . pSQL($fs_data['fs_factura_code']) . ' | ';
+        if (!$fs_data) {
+            // No está importado
+            return '<div class="alert alert-warning" style="padding: 8px 12px; margin-bottom: 15px; font-size: 13px;">
+                <i class="icon-warning"></i> <strong>FacturaScripts:</strong> Pedido no importado aún
+            </div>';
         }
 
-        return '<div class="alert alert-info" style="padding: 8px 12px; margin-bottom: 15px; font-size: 13px;">
-            <i class="icon-file-pdf-o"></i> <strong>FacturaScripts:</strong> ' . $factura_info . '
-            <a href="' . $download_url . '" target="_blank" class="btn btn-primary btn-xs" style="padding: 2px 8px; font-size: 11px;">
-                <i class="icon-download"></i> Descargar Factura
-            </a>
+        // Está importado - mostrar info
+        $factura_info = '';
+        if (!empty($fs_data['fs_factura_code'])) {
+            $factura_info = ' | <strong>Factura:</strong> ' . pSQL($fs_data['fs_factura_code']);
+        }
+
+        return '<div class="alert alert-success" style="padding: 8px 12px; margin-bottom: 15px; font-size: 13px;">
+            <i class="icon-check"></i> <strong>FacturaScripts:</strong> Importado
+            <strong>Albarán:</strong> ' . pSQL($fs_data['fs_albaran_code']) . $factura_info . '
         </div>';
     }
 
