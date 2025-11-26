@@ -96,36 +96,14 @@ class OrdersDownload
             // Filtro de ID mínimo (SIEMPRE usado)
             $importSinceId = (int)$this->config->import_since_id;
 
-            // RETROCESO INTELIGENTE: Si hay fecha configurada, verificar si necesitamos retroceder
-            if (!empty($importSinceDate) && $importSinceId > 0) {
-                Tools::log()->info("Verificando si necesitamos retroceder por fecha {$importSinceDate}...");
-
-                // Obtener UN pedido en el ID actual para ver su fecha
-                $currentOrder = $this->connection->getOrder($importSinceId);
-
-                if ($currentOrder) {
-                    $currentOrderDate = substr((string)$currentOrder->date_add, 0, 10);
-                    Tools::log()->info("Pedido ID {$importSinceId} tiene fecha: {$currentOrderDate}");
-
-                    // Si el pedido actual es MÁS ANTIGUO que la fecha configurada
-                    // significa que hay pedidos más recientes que importar (continuar adelante)
-                    if ($currentOrderDate < $importSinceDate) {
-                        Tools::log()->info("✓ Pedido actual ({$currentOrderDate}) es anterior a fecha configurada ({$importSinceDate})");
-                        Tools::log()->info("✓ Continuamos desde ID {$importSinceId} avanzando hacia pedidos más recientes");
-                    } else {
-                        // El pedido actual es >= fecha configurada
-                        // Necesitamos retroceder para buscar pedidos más antiguos que cumplan la fecha
-                        Tools::log()->warning("⚠ Pedido actual ({$currentOrderDate}) cumple fecha configurada ({$importSinceDate})");
-                        Tools::log()->warning("⚠ Reseteando a 0 para buscar pedidos desde el principio");
-                        $importSinceId = 0;
-                        $this->config->import_since_id = 0;
-                        $this->config->save();
-                    }
-                }
-            }
-
             if ($importSinceId > 0) {
                 Tools::log()->info("Filtro de ID mínimo: {$importSinceId}");
+            }
+
+            // AVISO: Si hay fecha configurada pero el puntero está avanzado
+            if (!empty($importSinceDate) && $importSinceId > 1000) {
+                Tools::log()->warning("⚠ ATENCIÓN: Fecha configurada ({$importSinceDate}) con puntero en ID {$importSinceId}");
+                Tools::log()->warning("⚠ Si necesitas importar pedidos antiguos, pon import_since_id = 0 en la configuración");
             }
 
             // Obtener pedidos con límite para evitar timeout
