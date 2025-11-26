@@ -96,6 +96,39 @@ class OrdersDownload
             // Filtro de ID mínimo (SIEMPRE usado)
             $importSinceId = (int)$this->config->import_since_id;
 
+            // IMPORTANTE: Si hay fecha configurada, verificar si hay pedidos viejos que cumplan
+            if (!empty($importSinceDate) && $importSinceId > 100) {
+                Tools::log()->info("Verificando pedidos antiguos con fecha >= {$importSinceDate}...");
+
+                // Obtener pedidos SIN sinceId para buscar en todo el catálogo
+                // Limitamos a 200 para no saturar
+                $allOrders = $this->connection->getOrders(200, null);
+
+                if (!empty($allOrders)) {
+                    // Buscar pedidos que cumplan: fecha >= import_since_date
+                    $oldOrdersWithDate = array_filter($allOrders, function($order) use ($importSinceDate) {
+                        $orderDate = substr((string)$order->date_add, 0, 10);
+                        return $orderDate >= $importSinceDate;
+                    });
+
+                    if (!empty($oldOrdersWithDate)) {
+                        // Encontrar el ID más bajo de esos pedidos
+                        $minId = min(array_map(function($o) { return (int)$o->id; }, $oldOrdersWithDate));
+
+                        // Si el mínimo es menor que el puntero actual, retroceder
+                        if ($minId < $importSinceId) {
+                            Tools::log()->warning("⚠ Encontrados pedidos antiguos con fecha >= {$importSinceDate}");
+                            Tools::log()->warning("⚠ Retrocediendo import_since_id de {$importSinceId} a {$minId}");
+                            $importSinceId = $minId;
+                            $this->config->import_since_id = $minId;
+                            $this->config->save();
+                        } else {
+                            Tools::log()->info("✓ No hay pedidos anteriores al ID {$importSinceId} con fecha >= {$importSinceDate}");
+                        }
+                    }
+                }
+            }
+
             if ($importSinceId > 0) {
                 Tools::log()->info("Filtro de ID mínimo: {$importSinceId}");
             }

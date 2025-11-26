@@ -106,6 +106,26 @@ class WebhookPrestashop extends Controller
                 throw new \Exception("No se pudo obtener el pedido {$orderId} de PrestaShop");
             }
 
+            // IMPORTANTE: Verificar si el estado del pedido está en los estados configurados
+            $estadosImportar = $config->getEstadosArray();
+            $currentState = (int)$orderXml->current_state;
+
+            if (!empty($estadosImportar) && !in_array($currentState, $estadosImportar)) {
+                $webhookLog->markProcessed(false, "Pedido en estado {$currentState} no está en los estados configurados para importar");
+                Tools::log()->warning("⊘ Webhook omitido: Pedido {$orderId} en estado {$currentState} no configurado para importar");
+
+                http_response_code(200);
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Pedido en estado no importable',
+                    'order_id' => $orderId,
+                    'current_state' => $currentState,
+                    'estados_configurados' => $estadosImportar
+                ]);
+                die();
+            }
+
             // Importar el pedido
             $importer = new OrdersDownload();
             $reflection = new \ReflectionClass($importer);
