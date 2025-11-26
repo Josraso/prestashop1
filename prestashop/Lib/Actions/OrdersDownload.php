@@ -96,35 +96,30 @@ class OrdersDownload
             // Filtro de ID mínimo (SIEMPRE usado)
             $importSinceId = (int)$this->config->import_since_id;
 
-            // IMPORTANTE: Si hay fecha configurada, verificar si hay pedidos viejos que cumplan
-            if (!empty($importSinceDate) && $importSinceId > 100) {
-                Tools::log()->info("Verificando pedidos antiguos con fecha >= {$importSinceDate}...");
+            // RETROCESO INTELIGENTE: Si hay fecha configurada, verificar si necesitamos retroceder
+            if (!empty($importSinceDate) && $importSinceId > 0) {
+                Tools::log()->info("Verificando si necesitamos retroceder por fecha {$importSinceDate}...");
 
-                // Obtener pedidos SIN sinceId para buscar en todo el catálogo
-                // Limitamos a 200 para no saturar
-                $allOrders = $this->connection->getOrders(200, null);
+                // Obtener UN pedido en el ID actual para ver su fecha
+                $currentOrder = $this->connection->getOrder($importSinceId);
 
-                if (!empty($allOrders)) {
-                    // Buscar pedidos que cumplan: fecha >= import_since_date
-                    $oldOrdersWithDate = array_filter($allOrders, function($order) use ($importSinceDate) {
-                        $orderDate = substr((string)$order->date_add, 0, 10);
-                        return $orderDate >= $importSinceDate;
-                    });
+                if ($currentOrder) {
+                    $currentOrderDate = substr((string)$currentOrder->date_add, 0, 10);
+                    Tools::log()->info("Pedido ID {$importSinceId} tiene fecha: {$currentOrderDate}");
 
-                    if (!empty($oldOrdersWithDate)) {
-                        // Encontrar el ID más bajo de esos pedidos
-                        $minId = min(array_map(function($o) { return (int)$o->id; }, $oldOrdersWithDate));
-
-                        // Si el mínimo es menor que el puntero actual, retroceder
-                        if ($minId < $importSinceId) {
-                            Tools::log()->warning("⚠ Encontrados pedidos antiguos con fecha >= {$importSinceDate}");
-                            Tools::log()->warning("⚠ Retrocediendo import_since_id de {$importSinceId} a {$minId}");
-                            $importSinceId = $minId;
-                            $this->config->import_since_id = $minId;
-                            $this->config->save();
-                        } else {
-                            Tools::log()->info("✓ No hay pedidos anteriores al ID {$importSinceId} con fecha >= {$importSinceDate}");
-                        }
+                    // Si el pedido actual es MÁS ANTIGUO que la fecha configurada
+                    // significa que hay pedidos más recientes que importar (continuar adelante)
+                    if ($currentOrderDate < $importSinceDate) {
+                        Tools::log()->info("✓ Pedido actual ({$currentOrderDate}) es anterior a fecha configurada ({$importSinceDate})");
+                        Tools::log()->info("✓ Continuamos desde ID {$importSinceId} avanzando hacia pedidos más recientes");
+                    } else {
+                        // El pedido actual es >= fecha configurada
+                        // Necesitamos retroceder para buscar pedidos más antiguos que cumplan la fecha
+                        Tools::log()->warning("⚠ Pedido actual ({$currentOrderDate}) cumple fecha configurada ({$importSinceDate})");
+                        Tools::log()->warning("⚠ Reseteando a 0 para buscar pedidos desde el principio");
+                        $importSinceId = 0;
+                        $this->config->import_since_id = 0;
+                        $this->config->save();
                     }
                 }
             }
@@ -218,37 +213,21 @@ class OrdersDownload
             Tools::log()->info('[OrdersDownload::batch] Errores: ' . $errors);
             Tools::log()->info('[OrdersDownload::batch] ===========================================');
 
-            // IMPORTANTE: Si NO se importó ninguno, avanzar el puntero automáticamente SOLO si no fue por fecha
-            // Esto permite atravesar pedidos ya importados, pero NO pedidos que no cumplen fecha
+            // IMPORTANTE: Si NO se importó ninguno, avanzar el puntero automáticamente
+            // Esto permite atravesar pedidos viejos/ya importados hasta encontrar nuevos
             if ($imported == 0 && count($orders) > 0) {
-                // Verificar si TODOS fueron omitidos por fecha
-                $allSkippedByDate = true;
-                foreach ($orders as $orderXml) {
-                    $orderDate = $this->getLastOrderStatusDate($orderXml, (int)$orderXml->id);
-                    if (!$orderDate) {
-                        $orderDate = (string)$orderXml->date_add;
-                    }
+                $lastOrderXml = end($orders);
+                $lastOrderId = (int)$lastOrderXml->id;
 
-                    // Si algún pedido NO fue omitido por fecha, podemos avanzar
-                    if (empty($importSinceDate) || $orderDate >= $importSinceDate) {
-                        $allSkippedByDate = false;
-                        break;
-                    }
-                }
+                $this->config->import_since_id = $lastOrderId;
+                $this->config->save();
 
-                // SOLO avanzar si NO todos fueron omitidos por fecha
-                if (!$allSkippedByDate) {
-                    $lastOrderXml = end($orders);
-                    $lastOrderId = (int)$lastOrderXml->id;
-
-                    $this->config->import_since_id = $lastOrderId;
-                    $this->config->save();
-
-                    Tools::log()->warning("[OrdersDownload::batch] ⚠ NO se importó ningún pedido en este lote (ya estaban importados).");
-                    Tools::log()->warning("[OrdersDownload::batch] ⚠ Avanzando automáticamente import_since_id a {$lastOrderId}.");
+                if (!empty($importSinceDate)) {
+                    Tools::log()->warning("[OrdersDownload::batch] ⚠ NO se importó ningún pedido en este lote.");
+                    Tools::log()->warning("[OrdersDownload::batch] ⚠ Avanzando a ID {$lastOrderId} para atravesar pedidos que no cumplen fecha {$importSinceDate}");
                 } else {
-                    Tools::log()->warning("[OrdersDownload::batch] ⚠ NO se importó ningún pedido porque TODOS están fuera del rango de fecha.");
-                    Tools::log()->warning("[OrdersDownload::batch] ⚠ NO se avanza el puntero. Ya hemos alcanzado el final de pedidos válidos.");
+                    Tools::log()->warning("[OrdersDownload::batch] ⚠ NO se importó ningún pedido (ya estaban importados).");
+                    Tools::log()->warning("[OrdersDownload::batch] ⚠ Avanzando automáticamente import_since_id a {$lastOrderId}.");
                 }
             }
 
