@@ -310,33 +310,12 @@ class FsFacturaScripts extends Module
     }
 
     /**
-     * Hook: Mostrar info de FacturaScripts en ficha del pedido (admin)
+     * Hook: displayAdminOrder - No mostrar nada
      */
     public function hookDisplayAdminOrder($params)
     {
-        $id_order = (int)$params['id_order'];
-        $order = new Order($id_order);
-
-        // Obtener datos de FacturaScripts si existen
-        $fs_data = $this->getFacturaScriptsData($order->reference);
-
-        if (!$fs_data) {
-            // No está importado
-            return '<div class="alert alert-warning" style="padding: 8px 12px; margin-bottom: 15px; font-size: 13px;">
-                <i class="icon-warning"></i> <strong>FacturaScripts:</strong> Pedido no importado aún
-            </div>';
-        }
-
-        // Está importado - mostrar info
-        $factura_info = '';
-        if (!empty($fs_data['fs_factura_code'])) {
-            $factura_info = ' | <strong>Factura:</strong> ' . pSQL($fs_data['fs_factura_code']);
-        }
-
-        return '<div class="alert alert-success" style="padding: 8px 12px; margin-bottom: 15px; font-size: 13px;">
-            <i class="icon-check"></i> <strong>FacturaScripts:</strong> Importado
-            <strong>Albarán:</strong> ' . pSQL($fs_data['fs_albaran_code']) . $factura_info . '
-        </div>';
+        // No mostrar nada en la ficha del pedido
+        return '';
     }
 
     /**

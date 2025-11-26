@@ -96,45 +96,6 @@ class OrdersDownload
             // Filtro de ID mínimo (SIEMPRE usado)
             $importSinceId = (int)$this->config->import_since_id;
 
-            // IMPORTANTE: Si el usuario cambió la fecha a más antigua, permitir retroceder
-            // Para ello, buscar si hay pedidos ANTES del import_since_id actual que cumplan la nueva fecha
-            if (!empty($importSinceDate) && $importSinceId > 0) {
-                Tools::log()->info("Verificando si hay pedidos anteriores al ID {$importSinceId} que cumplan con la fecha {$importSinceDate}...");
-
-                // Obtener pedidos desde el ID 1 hasta un rango razonable
-                // Usar sinceId=1 para empezar desde el principio
-                $testOrders = $this->connection->getOrders(500, 1);
-
-                if ($testOrders === false || $testOrders === null) {
-                    Tools::log()->error("Error al obtener pedidos para verificación de retroceso");
-                } else {
-                    Tools::log()->info("✓ Se obtuvieron " . count($testOrders) . " pedidos desde ID 1 para verificación");
-
-                    // Filtrar manualmente en PHP: ID < import_since_id Y fecha >= import_since_date
-                    $oldOrders = array_filter($testOrders, function($order) use ($importSinceId, $importSinceDate) {
-                        $orderId = (int)$order->id;
-                        $orderDate = substr((string)$order->date_add, 0, 10); // YYYY-MM-DD
-                        return $orderId < $importSinceId && $orderDate >= $importSinceDate;
-                    });
-
-                    if (!empty($oldOrders)) {
-                        Tools::log()->warning("⚠ Se encontraron " . count($oldOrders) . " pedidos antiguos (IDs: " .
-                            implode(', ', array_map(function($o) { return $o->id; }, array_slice($oldOrders, 0, 5))) .
-                            (count($oldOrders) > 5 ? '...' : '') . ") que cumplen con la fecha {$importSinceDate}");
-                        Tools::log()->warning("⚠ Reseteando import_since_id a 0 para procesarlos desde el principio.");
-                        $importSinceId = 0;
-                        $this->config->import_since_id = 0;
-                        $this->config->save();
-                    } else {
-                        Tools::log()->warning("⚠ No se encontraron pedidos anteriores al ID {$importSinceId} con fecha >= {$importSinceDate}");
-                        Tools::log()->warning("⚠ Reseteando import_since_id a 0 de todas formas para buscar desde el principio");
-                        $importSinceId = 0;
-                        $this->config->import_since_id = 0;
-                        $this->config->save();
-                    }
-                }
-            }
-
             if ($importSinceId > 0) {
                 Tools::log()->info("Filtro de ID mínimo: {$importSinceId}");
             }
