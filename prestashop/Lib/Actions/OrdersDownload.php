@@ -121,6 +121,8 @@ class OrdersDownload
 
             Tools::log()->info("[OrdersDownload::batch] Se obtuvieron " . count($orders) . " pedidos. Procesando...");
 
+            $lastImportedId = 0; // Guardar el último ID importado
+
             foreach ($orders as $orderXml) {
                 $orderId = (int)$orderXml->id;
                 $orderRef = (string)$orderXml->reference;
@@ -157,6 +159,7 @@ class OrdersDownload
                     $albaranData = $this->importOrder($orderXml);
                     if ($albaranData) {
                         $imported++;
+                        $lastImportedId = $orderId; // Guardar el último ID importado
                         Tools::log()->info("[OrdersDownload::batch] ✓ Pedido {$orderRef} importado correctamente");
 
                         // Registrar importación exitosa
@@ -191,21 +194,22 @@ class OrdersDownload
             Tools::log()->info('[OrdersDownload::batch] Errores: ' . $errors);
             Tools::log()->info('[OrdersDownload::batch] ===========================================');
 
-            // IMPORTANTE: Si NO se importó ninguno, avanzar el puntero automáticamente
-            // Esto permite atravesar pedidos viejos/ya importados hasta encontrar nuevos
-            if ($imported == 0 && count($orders) > 0) {
-                $lastOrderXml = end($orders);
-                $lastOrderId = (int)$lastOrderXml->id;
-
-                $this->config->import_since_id = $lastOrderId;
-                $this->config->save();
-
-                if (!empty($importSinceDate)) {
-                    Tools::log()->warning("[OrdersDownload::batch] ⚠ NO se importó ningún pedido en este lote.");
-                    Tools::log()->warning("[OrdersDownload::batch] ⚠ Avanzando a ID {$lastOrderId} para atravesar pedidos que no cumplen fecha {$importSinceDate}");
+            // Actualizar puntero automáticamente
+            if (count($orders) > 0) {
+                if ($imported > 0 && $lastImportedId > 0) {
+                    // Si se importaron pedidos, avanzar al último importado
+                    $this->config->import_since_id = $lastImportedId;
+                    $this->config->save();
+                    Tools::log()->info("[OrdersDownload::batch] ✓ Puntero actualizado al último importado: ID {$lastImportedId}");
                 } else {
-                    Tools::log()->warning("[OrdersDownload::batch] ⚠ NO se importó ningún pedido (ya estaban importados).");
-                    Tools::log()->warning("[OrdersDownload::batch] ⚠ Avanzando automáticamente import_since_id a {$lastOrderId}.");
+                    // Si NO se importó ninguno, avanzar al último procesado para seguir buscando
+                    $lastOrderXml = end($orders);
+                    $lastOrderId = (int)$lastOrderXml->id;
+
+                    $this->config->import_since_id = $lastOrderId;
+                    $this->config->save();
+
+                    Tools::log()->warning("[OrdersDownload::batch] ⚠ NO se importó ningún pedido. Avanzando a ID {$lastOrderId} para continuar buscando");
                 }
             }
 
