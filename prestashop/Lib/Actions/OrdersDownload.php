@@ -101,9 +101,9 @@ class OrdersDownload
             if (!empty($importSinceDate) && $importSinceId > 0) {
                 Tools::log()->info("Verificando si hay pedidos anteriores al ID {$importSinceId} que cumplan con la fecha {$importSinceDate}...");
 
-                // NO pasar customFilters - la API ya filtra por estado y no acepta más filtros complejos
-                // Obtenemos pedidos del estado configurado y filtramos en PHP
-                $testOrders = $this->connection->getOrders(100, null);
+                // Obtener MUCHOS pedidos para tener probabilidad de encontrar viejos
+                // La API solo acepta filter[current_state], no podemos filtrar por ID también
+                $testOrders = $this->connection->getOrders(2000, null);
 
                 if ($testOrders === false || $testOrders === null) {
                     Tools::log()->error("Error al obtener pedidos para verificación de retroceso");
@@ -121,6 +121,9 @@ class OrdersDownload
                         $importSinceId = 0;
                         $this->config->import_since_id = 0;
                         $this->config->save();
+                    } else {
+                        Tools::log()->info("✓ No se encontraron pedidos anteriores al ID {$importSinceId} con fecha >= {$importSinceDate}");
+                        Tools::log()->info("✓ Si necesitas importar pedidos viejos, pon import_since_id a 0 manualmente en la configuración");
                     }
                 }
             }

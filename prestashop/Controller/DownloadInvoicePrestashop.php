@@ -78,7 +78,8 @@ class DownloadInvoicePrestashop extends Controller
                 WHERE idalbaran = " . (int)$albaran->idalbaran . "
                 LIMIT 1";
 
-        $result = $this->dataBase->select($sql);
+        $db = Tools::dataBase();
+        $result = $db->select($sql);
         if (!empty($result) && isset($result[0]['idfactura'])) {
             $this->downloadByInvoiceId((int)$result[0]['idfactura']);
             return;

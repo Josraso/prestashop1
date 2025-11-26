@@ -91,23 +91,23 @@ class ListPedidosPrestashop extends Controller
         try {
             $connection = new PrestashopConnection($config);
 
-            // Obtener últimos 500 pedidos sin filtros (los filtraremos en PHP)
-            $ordersXml = $connection->getOrders(500, null);
+            // Si hay filtro "ID desde", usarlo en la API para obtener desde ese punto
+            $sinceId = $this->filterIdFrom > 0 ? $this->filterIdFrom : null;
+
+            // Obtener hasta 1000 pedidos (los filtraremos en PHP)
+            $ordersXml = $connection->getOrders(1000, $sinceId);
 
             if (!$ordersXml) {
                 Tools::log()->error('No se pudieron obtener pedidos de PrestaShop');
                 return;
             }
 
-            // Convertir a array
+            // Convertir a array y aplicar solo filtro "ID hasta" en PHP
             $allOrders = [];
             foreach ($ordersXml as $orderXml) {
                 $orderId = (int)$orderXml->id;
 
-                // Aplicar filtros en PHP
-                if ($this->filterIdFrom > 0 && $orderId < $this->filterIdFrom) {
-                    continue;
-                }
+                // Aplicar solo filtro "ID hasta" en PHP (el "ID desde" ya está en la API)
                 if ($this->filterIdTo > 0 && $orderId > $this->filterIdTo) {
                     continue;
                 }
