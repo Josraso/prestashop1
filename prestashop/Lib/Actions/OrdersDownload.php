@@ -495,7 +495,8 @@ class OrdersDownload
             return null;
         }
 
-        $email = (string)$customerXml->email;
+        // Obtener email del cliente
+        $email = trim((string)$customerXml->email);
 
         // Obtener dirección de facturación del pedido para sacar el NIF/CIF real
         $addressXml = null;
@@ -583,14 +584,22 @@ class OrdersDownload
             }
         }
 
-        $cliente->email = $email;
+        // IMPORTANTE: Importar email (esencial para envío de facturas)
+        if (!empty($email)) {
+            $cliente->email = $email;
+            Tools::log()->info("Email del cliente: {$email}");
+        } else {
+            Tools::log()->warning("Cliente {$customerId} sin email en PrestaShop");
+        }
 
-        // Importar teléfono desde la dirección de facturación
+        // IMPORTANTE: Importar teléfono desde la dirección de facturación
         if ($addressXml) {
             if (!empty((string)$addressXml->phone_mobile)) {
                 $cliente->telefono1 = (string)$addressXml->phone_mobile;
+                Tools::log()->info("Teléfono móvil del cliente: {$cliente->telefono1}");
             } elseif (!empty((string)$addressXml->phone)) {
                 $cliente->telefono1 = (string)$addressXml->phone;
+                Tools::log()->info("Teléfono del cliente: {$cliente->telefono1}");
             }
         }
 
