@@ -307,10 +307,33 @@ class PrestashopConnection
         }
 
         try {
-            $xmlString = $this->webService->get('customers/' . $customerId);
+            // IMPORTANTE: Usar display=full para obtener TODOS los datos del cliente (email, etc.)
+            // Sin display=full, PrestaShop puede devolver solo algunos campos
+            $params = [
+                'filter[id]' => '[' . $customerId . ']',
+                'display' => 'full',
+                'limit' => 1
+            ];
+
+            $xmlString = $this->webService->get('customers', null, null, $params);
             $xml = simplexml_load_string($xmlString);
 
-            return $xml->customer ?? null;
+            // La respuesta viene como <customers><customer>...</customer></customers>
+            if (isset($xml->customers->customer)) {
+                $customer = $xml->customers->customer;
+
+                // Si es un array, tomar el primero
+                if (is_array($customer) || $customer instanceof \Traversable) {
+                    foreach ($customer as $c) {
+                        return $c;
+                    }
+                } else {
+                    // Es un solo cliente
+                    return $customer;
+                }
+            }
+
+            return null;
         } catch (\Exception $e) {
             return null;
         }
