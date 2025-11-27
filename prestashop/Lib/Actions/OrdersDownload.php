@@ -585,6 +585,15 @@ class OrdersDownload
 
         $cliente->email = $email;
 
+        // Importar teléfono desde la dirección de facturación
+        if ($addressXml) {
+            if (!empty((string)$addressXml->phone_mobile)) {
+                $cliente->telefono1 = (string)$addressXml->phone_mobile;
+            } elseif (!empty((string)$addressXml->phone)) {
+                $cliente->telefono1 = (string)$addressXml->phone;
+            }
+        }
+
         // Dejar que FacturaScripts genere el codcliente automáticamente
         // En FacturaScripts 2025 se genera automáticamente si se deja vacío
 
