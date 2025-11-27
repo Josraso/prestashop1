@@ -533,6 +533,37 @@ class OrdersDownload
         if (!empty($cifnif_busqueda)) {
             $clienteExistente = $this->findClienteByCifNif($cifnif_busqueda);
             if ($clienteExistente) {
+                // IMPORTANTE: Actualizar email y teléfono del cliente existente
+                $actualizado = false;
+
+                // Actualizar email si existe y es diferente
+                if (!empty($email) && $clienteExistente->email !== $email) {
+                    $clienteExistente->email = $email;
+                    $actualizado = true;
+                    Tools::log()->info("Actualizando email del cliente existente: {$email}");
+                }
+
+                // Actualizar teléfono si existe en la dirección
+                if ($addressXml) {
+                    $telefonoNuevo = '';
+                    if (!empty((string)$addressXml->phone_mobile)) {
+                        $telefonoNuevo = (string)$addressXml->phone_mobile;
+                    } elseif (!empty((string)$addressXml->phone)) {
+                        $telefonoNuevo = (string)$addressXml->phone;
+                    }
+
+                    if (!empty($telefonoNuevo) && $clienteExistente->telefono1 !== $telefonoNuevo) {
+                        $clienteExistente->telefono1 = $telefonoNuevo;
+                        $actualizado = true;
+                        Tools::log()->info("Actualizando teléfono del cliente existente: {$telefonoNuevo}");
+                    }
+                }
+
+                // Guardar si se actualizó algo
+                if ($actualizado) {
+                    $clienteExistente->save();
+                }
+
                 return $clienteExistente;
             }
         }
