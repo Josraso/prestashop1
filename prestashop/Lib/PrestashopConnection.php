@@ -78,26 +78,30 @@ class PrestashopConnection
             if (isset($xml->order_states->order_state)) {
                 foreach ($xml->order_states->order_state as $state) {
                     $id = (int)$state->id;
+                    $nombreEstado = '';
 
                     // Intentar obtener el nombre del estado
                     if (isset($state->name->language)) {
                         // Si hay múltiples idiomas, tomar el primero
                         if (is_array($state->name->language) || $state->name->language instanceof \Traversable) {
                             foreach ($state->name->language as $lang) {
-                                $states[$id] = (string)$lang;
+                                $nombreEstado = (string)$lang;
                                 break;
                             }
                         } else {
                             // Solo un idioma
-                            $states[$id] = (string)$state->name->language;
+                            $nombreEstado = (string)$state->name->language;
                         }
                     } elseif (isset($state->name)) {
                         // Fallback: usar directamente el nombre si no hay idiomas
-                        $states[$id] = (string)$state->name;
+                        $nombreEstado = (string)$state->name;
                     } else {
                         // Último recurso: usar el ID como nombre
-                        $states[$id] = 'Estado ' . $id;
+                        $nombreEstado = 'Estado ' . $id;
                     }
+
+                    // Añadir ID entre corchetes al principio del nombre
+                    $states[$id] = '[' . $id . '] ' . $nombreEstado;
                 }
             }
 
