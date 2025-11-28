@@ -373,6 +373,43 @@ class PrestashopConnection
     }
 
     /**
+     * Obtiene información de un país desde PrestaShop
+     */
+    public function getCountry(int $countryId): ?\SimpleXMLElement
+    {
+        if (!$this->isConnected() || $countryId <= 0) {
+            return null;
+        }
+
+        try {
+            $params = [
+                'filter[id]' => '[' . $countryId . ']',
+                'display' => 'full',
+                'limit' => 1
+            ];
+
+            $xmlString = $this->webService->get('countries', null, null, $params);
+            $xml = simplexml_load_string($xmlString);
+
+            if (isset($xml->countries->country)) {
+                $country = $xml->countries->country;
+
+                if (is_array($country) || $country instanceof \Traversable) {
+                    foreach ($country as $c) {
+                        return $c;
+                    }
+                } else {
+                    return $country;
+                }
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    /**
      * Obtiene el nombre de un estado (provincia/región)
      */
     public function getStateName(int $stateId): ?string

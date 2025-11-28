@@ -857,17 +857,18 @@ class OrdersDownload
      */
     private function getCountryCode(int $countryId): string
     {
-        // Mapeo básico de países comunes
-        $countryMap = [
-            6 => 'ESP',  // España
-            8 => 'FRA',  // Francia
-            17 => 'DEU', // Alemania
-            110 => 'ITA', // Italia
-            13 => 'GBR', // Reino Unido
-            21 => 'USA', // Estados Unidos
-        ];
+        // Obtener el país directamente desde PrestaShop para usar su iso_code
+        $countryXml = $this->connection->getCountry($countryId);
 
-        return $countryMap[$countryId] ?? 'ESP';
+        if ($countryXml && !empty((string)$countryXml->iso_code)) {
+            $isoCode = strtoupper(trim((string)$countryXml->iso_code));
+            Tools::log()->info("País obtenido desde PrestaShop: {$isoCode} (ID: {$countryId})");
+            return $isoCode;
+        }
+
+        // Fallback: España por defecto si no se puede obtener
+        Tools::log()->warning("No se pudo obtener el código ISO del país ID {$countryId}. Usando ESP por defecto.");
+        return 'ESP';
     }
 
     /**
