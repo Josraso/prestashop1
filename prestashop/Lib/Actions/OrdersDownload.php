@@ -533,7 +533,7 @@ class OrdersDownload
         if (!empty($cifnif_busqueda)) {
             $clienteExistente = $this->findClienteByCifNif($cifnif_busqueda);
             if ($clienteExistente) {
-                // IMPORTANTE: Actualizar email y teléfono del cliente existente
+                // IMPORTANTE: Actualizar TODOS los datos del cliente existente
                 $actualizado = false;
 
                 // Actualizar email si existe y es diferente
@@ -543,8 +543,9 @@ class OrdersDownload
                     Tools::log()->info("Actualizando email del cliente existente: {$email}");
                 }
 
-                // Actualizar teléfono si existe en la dirección
+                // Actualizar datos de la dirección
                 if ($addressXml) {
+                    // Teléfonos
                     $telefonoNuevo = '';
                     if (!empty((string)$addressXml->phone_mobile)) {
                         $telefonoNuevo = (string)$addressXml->phone_mobile;
@@ -557,11 +558,61 @@ class OrdersDownload
                         $actualizado = true;
                         Tools::log()->info("Actualizando teléfono del cliente existente: {$telefonoNuevo}");
                     }
+
+                    // Dirección completa
+                    $direccionNueva = (string)$addressXml->address1;
+                    if (!empty((string)$addressXml->address2)) {
+                        $direccionNueva .= "\n" . (string)$addressXml->address2;
+                    }
+                    if (!empty($direccionNueva) && $clienteExistente->direccion !== $direccionNueva) {
+                        $clienteExistente->direccion = $direccionNueva;
+                        $actualizado = true;
+                        Tools::log()->info("Actualizando dirección del cliente existente");
+                    }
+
+                    // Código postal
+                    $codpostalNuevo = (string)$addressXml->postcode;
+                    if (!empty($codpostalNuevo) && $clienteExistente->codpostal !== $codpostalNuevo) {
+                        $clienteExistente->codpostal = $codpostalNuevo;
+                        $actualizado = true;
+                        Tools::log()->info("Actualizando código postal: {$codpostalNuevo}");
+                    }
+
+                    // Ciudad
+                    $ciudadNueva = (string)$addressXml->city;
+                    if (!empty($ciudadNueva) && $clienteExistente->ciudad !== $ciudadNueva) {
+                        $clienteExistente->ciudad = $ciudadNueva;
+                        $actualizado = true;
+                        Tools::log()->info("Actualizando ciudad: {$ciudadNueva}");
+                    }
+
+                    // Provincia
+                    $stateId = (int)$addressXml->id_state;
+                    if ($stateId > 0) {
+                        $provinciaNueva = $this->connection->getStateName($stateId);
+                        if (!empty($provinciaNueva) && $clienteExistente->provincia !== $provinciaNueva) {
+                            $clienteExistente->provincia = $provinciaNueva;
+                            $actualizado = true;
+                            Tools::log()->info("Actualizando provincia: {$provinciaNueva}");
+                        }
+                    }
+
+                    // País
+                    $countryId = (int)$addressXml->id_country;
+                    if ($countryId > 0) {
+                        $paisNuevo = $this->getCountryCode($countryId);
+                        if (!empty($paisNuevo) && $clienteExistente->codpais !== $paisNuevo) {
+                            $clienteExistente->codpais = $paisNuevo;
+                            $actualizado = true;
+                            Tools::log()->info("Actualizando país: {$paisNuevo}");
+                        }
+                    }
                 }
 
                 // Guardar si se actualizó algo
                 if ($actualizado) {
                     $clienteExistente->save();
+                    Tools::log()->info("✓ Cliente actualizado con nuevos datos de dirección");
                 }
 
                 return $clienteExistente;
