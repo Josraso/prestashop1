@@ -861,9 +861,71 @@ class OrdersDownload
         $countryXml = $this->connection->getCountry($countryId);
 
         if ($countryXml && !empty((string)$countryXml->iso_code)) {
-            $isoCode = strtoupper(trim((string)$countryXml->iso_code));
-            Tools::log()->info("País obtenido desde PrestaShop: {$isoCode} (ID: {$countryId})");
-            return $isoCode;
+            $isoCode2 = strtoupper(trim((string)$countryXml->iso_code)); // ISO de 2 letras
+
+            // Mapeo de ISO 3166-1 alpha-2 (PrestaShop) a alpha-3 (FacturaScripts)
+            $isoMap = [
+                'ES' => 'ESP', // España
+                'FR' => 'FRA', // Francia
+                'DE' => 'DEU', // Alemania
+                'IT' => 'ITA', // Italia
+                'GB' => 'GBR', // Reino Unido
+                'US' => 'USA', // Estados Unidos
+                'PT' => 'PRT', // Portugal
+                'BE' => 'BEL', // Bélgica
+                'NL' => 'NLD', // Países Bajos
+                'CH' => 'CHE', // Suiza
+                'AT' => 'AUT', // Austria
+                'PL' => 'POL', // Polonia
+                'CZ' => 'CZE', // República Checa
+                'RO' => 'ROU', // Rumania
+                'SE' => 'SWE', // Suecia
+                'DK' => 'DNK', // Dinamarca
+                'NO' => 'NOR', // Noruega
+                'FI' => 'FIN', // Finlandia
+                'IE' => 'IRL', // Irlanda
+                'GR' => 'GRC', // Grecia
+                'HU' => 'HUN', // Hungría
+                'SK' => 'SVK', // Eslovaquia
+                'SI' => 'SVN', // Eslovenia
+                'HR' => 'HRV', // Croacia
+                'BG' => 'BGR', // Bulgaria
+                'LT' => 'LTU', // Lituania
+                'LV' => 'LVA', // Letonia
+                'EE' => 'EST', // Estonia
+                'MT' => 'MLT', // Malta
+                'CY' => 'CYP', // Chipre
+                'LU' => 'LUX', // Luxemburgo
+                'MX' => 'MEX', // México
+                'AR' => 'ARG', // Argentina
+                'BR' => 'BRA', // Brasil
+                'CL' => 'CHL', // Chile
+                'CO' => 'COL', // Colombia
+                'PE' => 'PER', // Perú
+                'VE' => 'VEN', // Venezuela
+                'CA' => 'CAN', // Canadá
+                'AU' => 'AUS', // Australia
+                'NZ' => 'NZL', // Nueva Zelanda
+                'CN' => 'CHN', // China
+                'JP' => 'JPN', // Japón
+                'IN' => 'IND', // India
+                'RU' => 'RUS', // Rusia
+                'TR' => 'TUR', // Turquía
+                'ZA' => 'ZAF', // Sudáfrica
+                'MA' => 'MAR', // Marruecos
+                'DZ' => 'DZA', // Argelia
+                'TN' => 'TUN', // Túnez
+                'EG' => 'EGY', // Egipto
+            ];
+
+            if (isset($isoMap[$isoCode2])) {
+                $isoCode3 = $isoMap[$isoCode2];
+                Tools::log()->info("País: {$isoCode2} → {$isoCode3} (ID PrestaShop: {$countryId})");
+                return $isoCode3;
+            } else {
+                Tools::log()->warning("Código ISO-2 '{$isoCode2}' no mapeado a ISO-3. Usando ESP por defecto.");
+                return 'ESP';
+            }
         }
 
         // Fallback: España por defecto si no se puede obtener
