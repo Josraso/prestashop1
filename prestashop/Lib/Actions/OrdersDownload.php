@@ -398,11 +398,26 @@ class OrdersDownload
                 $unitPriceTaxIncl = (float)$row->unit_price_tax_incl;
                 $unitPriceTaxExcl = (float)$row->unit_price_tax_excl;
 
-                // Calcular el tax_rate (porcentaje de IVA)
-                $taxRate = 0;
-                if ($unitPriceTaxExcl > 0) {
-                    $taxRate = (($unitPriceTaxIncl / $unitPriceTaxExcl) - 1) * 100;
-                    $taxRate = round($taxRate, 2);
+                // Detectar el IVA correcto redondeando al legal más cercano (21%, 10%, 4%, 0%)
+                // En lugar de usar el IVA calculado con decimales raros
+                $taxRate = 21; // Por defecto 21%
+
+                if ($unitPriceTaxExcl > 0 && $unitPriceTaxIncl > $unitPriceTaxExcl) {
+                    // Calcular IVA aproximado desde los precios
+                    $calculatedRate = (($unitPriceTaxIncl / $unitPriceTaxExcl) - 1) * 100;
+
+                    // Redondear al IVA legal español más cercano
+                    if ($calculatedRate >= 18) {
+                        $taxRate = 21; // IVA general
+                    } elseif ($calculatedRate >= 7) {
+                        $taxRate = 10; // IVA reducido
+                    } elseif ($calculatedRate >= 2) {
+                        $taxRate = 4;  // IVA superreducido
+                    } else {
+                        $taxRate = 0;  // Exento
+                    }
+                } elseif ($unitPriceTaxExcl == 0 || $unitPriceTaxIncl == $unitPriceTaxExcl) {
+                    $taxRate = 0; // Sin IVA o exento
                 }
 
                 $products[] = [
@@ -412,7 +427,7 @@ class OrdersDownload
                     'product_quantity' => (int)$row->product_quantity,
                     'unit_price_tax_incl' => $unitPriceTaxIncl,
                     'unit_price_tax_excl' => $unitPriceTaxExcl,
-                    'tax_rate' => $taxRate,
+                    'tax_rate' => $taxRate,  // IVA legal correcto (21, 10, 4, 0)
                 ];
             }
         }
