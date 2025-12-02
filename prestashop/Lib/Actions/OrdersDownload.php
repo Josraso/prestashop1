@@ -1332,10 +1332,11 @@ class OrdersDownload
     private function updateImportSinceId(int $newId): void
     {
         try {
-            $db = Tools::dataBase();
+            // Usar el método correcto para obtener la base de datos
+            $dataBase = new \FacturaScripts\Core\Base\DataBase\DataBase();
             $sql = "UPDATE prestashop_config SET import_since_id = " . $newId . " WHERE id = " . (int)$this->config->id;
 
-            if ($db->exec($sql)) {
+            if ($dataBase->exec($sql)) {
                 // Actualizar también en memoria
                 $this->config->import_since_id = $newId;
             } else {
