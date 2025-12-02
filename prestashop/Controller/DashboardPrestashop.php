@@ -232,7 +232,7 @@ class DashboardPrestashop extends Controller
 
         try {
             // Usar el método correcto para obtener la base de datos
-            $dataBase = new \FacturaScripts\Core\Base\DataBase\DataBase();
+            $dataBase = new \FacturaScripts\Core\Base\DataBase();
             $sql = "DELETE FROM prestashop_import_log WHERE resultado = 'error'";
 
             if ($dataBase->exec($sql)) {

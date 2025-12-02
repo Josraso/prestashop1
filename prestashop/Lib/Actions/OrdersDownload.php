@@ -1333,7 +1333,7 @@ class OrdersDownload
     {
         try {
             // Usar el método correcto para obtener la base de datos
-            $dataBase = new \FacturaScripts\Core\Base\DataBase\DataBase();
+            $dataBase = new \FacturaScripts\Core\Base\DataBase();
             $sql = "UPDATE prestashop_config SET import_since_id = " . $newId . " WHERE id = " . (int)$this->config->id;
 
             if ($dataBase->exec($sql)) {
