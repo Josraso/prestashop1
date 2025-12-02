@@ -302,7 +302,7 @@
                                     </thead>
                                     <tbody>
                                         {% for log in fsc.importsError %}
-                                        <tr class="table-danger">
+                                        <tr class="error-row">
                                             <td class="text-nowrap">
                                                 <strong>{{ log.fecha }}</strong><br>
                                                 <small class="text-muted">{{ log.hora }}</small>
@@ -323,7 +323,7 @@
                                             </td>
                                             <td>
                                                 {% if log.mensaje %}
-                                                    <small class="text-danger"><strong>{{ log.mensaje }}</strong></small>
+                                                    <span class="error-message">{{ log.mensaje }}</span>
                                                 {% endif %}
                                             </td>
                                             <td>
@@ -400,6 +400,24 @@
 }
 .border-left-info {
     border-left: 0.25rem solid #36b9cc !important;
+}
+
+/* Estilos para filas de error - fondo suave y texto legible */
+.error-row {
+    background-color: #fff5f5 !important;
+    border-left: 3px solid #dc3545;
+}
+
+.error-row:hover {
+    background-color: #ffe6e6 !important;
+}
+
+.error-message {
+    color: #721c24;
+    font-weight: 500;
+    font-size: 0.9rem;
+    display: block;
+    padding: 5px 0;
 }
 </style>
 

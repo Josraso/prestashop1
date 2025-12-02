@@ -231,10 +231,11 @@ class DashboardPrestashop extends Controller
         }
 
         try {
-            $db = Tools::dataBase();
+            // Usar el método correcto para obtener la base de datos
+            $dataBase = new \FacturaScripts\Core\Base\DataBase\DataBase();
             $sql = "DELETE FROM prestashop_import_log WHERE resultado = 'error'";
 
-            if ($db->exec($sql)) {
+            if ($dataBase->exec($sql)) {
                 Tools::log()->info('Todos los errores han sido borrados');
             } else {
                 Tools::log()->error('No se pudieron borrar los errores');
