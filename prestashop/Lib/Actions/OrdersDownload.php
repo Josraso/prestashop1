@@ -198,16 +198,16 @@ class OrdersDownload
             if (count($orders) > 0) {
                 if ($imported > 0 && $lastImportedId > 0) {
                     // Si se importaron pedidos, avanzar al último importado
-                    $this->config->import_since_id = $lastImportedId;
-                    $this->config->save();
+                    // IMPORTANTE: Solo actualizar import_since_id, NO toda la config
+                    $this->updateImportSinceId($lastImportedId);
                     Tools::log()->info("[OrdersDownload::batch] ✓ Puntero actualizado al último importado: ID {$lastImportedId}");
                 } else {
                     // Si NO se importó ninguno, avanzar al último procesado para seguir buscando
                     $lastOrderXml = end($orders);
                     $lastOrderId = (int)$lastOrderXml->id;
 
-                    $this->config->import_since_id = $lastOrderId;
-                    $this->config->save();
+                    // IMPORTANTE: Solo actualizar import_since_id, NO toda la config
+                    $this->updateImportSinceId($lastOrderId);
 
                     Tools::log()->warning("[OrdersDownload::batch] ⚠ NO se importó ningún pedido. Avanzando a ID {$lastOrderId} para continuar buscando");
                 }
@@ -1322,6 +1322,27 @@ class OrdersDownload
         } catch (\Exception $e) {
             Tools::log()->error("Error obteniendo fecha del último estado: " . $e->getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Actualiza SOLO el campo import_since_id sin tocar el resto de la configuración
+     * Esto previene que se pierdan datos (shop_url, api_key, etc.) por errores de carga
+     */
+    private function updateImportSinceId(int $newId): void
+    {
+        try {
+            $db = Tools::dataBase();
+            $sql = "UPDATE prestashop_config SET import_since_id = " . $newId . " WHERE id = " . (int)$this->config->id;
+
+            if ($db->exec($sql)) {
+                // Actualizar también en memoria
+                $this->config->import_since_id = $newId;
+            } else {
+                Tools::log()->error("No se pudo actualizar import_since_id en la base de datos");
+            }
+        } catch (\Exception $e) {
+            Tools::log()->error("Error actualizando import_since_id: " . $e->getMessage());
         }
     }
 }
