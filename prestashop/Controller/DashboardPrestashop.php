@@ -31,6 +31,15 @@ class DashboardPrestashop extends Controller
     /** @var array */
     public $importsError = [];
 
+    /** @var int */
+    public $errorPage = 0;
+
+    /** @var int */
+    public $errorTotal = 0;
+
+    /** @var int */
+    public $errorPerPage = 50;
+
     /** @var PrestashopConfig */
     public $config;
 
@@ -50,10 +59,23 @@ class DashboardPrestashop extends Controller
         // Cargar configuración
         $this->config = PrestashopConfig::getActive();
 
+        // Obtener página de errores
+        $this->errorPage = (int)$this->request->query->get('error_page', 0);
+
         // Procesar acciones
         $action = $this->request->request->get('action', '');
-        if ($action === 'import-now') {
-            $this->importNowAction();
+        switch ($action) {
+            case 'import-now':
+                $this->importNowAction();
+                break;
+
+            case 'delete-error':
+                $this->deleteErrorAction();
+                break;
+
+            case 'delete-all-errors':
+                $this->deleteAllErrorsAction();
+                break;
         }
 
         // Cargar estadísticas
@@ -87,9 +109,15 @@ class DashboardPrestashop extends Controller
         $whereSkipped = [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('resultado', 'skipped')];
         $this->importsSkipped = $logModel->all($whereSkipped, $order, 0, 50);
 
-        // Errores
+        // Errores CON PAGINACIÓN
         $whereError = [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('resultado', 'error')];
-        $this->importsError = $logModel->all($whereError, $order, 0, 50);
+
+        // Contar total de errores
+        $this->errorTotal = $logModel->count($whereError);
+
+        // Cargar errores de la página actual
+        $offset = $this->errorPage * $this->errorPerPage;
+        $this->importsError = $logModel->all($whereError, $order, $offset, $this->errorPerPage);
     }
 
     /**
@@ -158,5 +186,76 @@ class DashboardPrestashop extends Controller
             default:
                 return $resultado;
         }
+    }
+
+    /**
+     * Borra un error específico
+     */
+    private function deleteErrorAction(): void
+    {
+        if (!$this->permissions->allowDelete) {
+            Tools::log()->warning('No tienes permisos para borrar errores');
+            return;
+        }
+
+        $id = (int)$this->request->request->get('id', 0);
+        if ($id <= 0) {
+            Tools::log()->error('ID de error inválido');
+            return;
+        }
+
+        $logModel = new PrestashopImportLog();
+        if ($logModel->loadFromCode($id)) {
+            if ($logModel->delete()) {
+                Tools::log()->info('Error borrado correctamente');
+            } else {
+                Tools::log()->error('No se pudo borrar el error');
+            }
+        } else {
+            Tools::log()->error('Error no encontrado');
+        }
+
+        // Recargar estadísticas
+        $this->loadStats();
+        $this->loadImportsByResult();
+    }
+
+    /**
+     * Borra todos los errores
+     */
+    private function deleteAllErrorsAction(): void
+    {
+        if (!$this->permissions->allowDelete) {
+            Tools::log()->warning('No tienes permisos para borrar errores');
+            return;
+        }
+
+        try {
+            $db = Tools::dataBase();
+            $sql = "DELETE FROM prestashop_import_log WHERE resultado = 'error'";
+
+            if ($db->exec($sql)) {
+                Tools::log()->info('Todos los errores han sido borrados');
+            } else {
+                Tools::log()->error('No se pudieron borrar los errores');
+            }
+        } catch (\Exception $e) {
+            Tools::log()->error('Error al borrar todos los errores: ' . $e->getMessage());
+        }
+
+        // Recargar estadísticas
+        $this->loadStats();
+        $this->loadImportsByResult();
+    }
+
+    /**
+     * Obtiene el número de páginas de errores
+     */
+    public function getErrorPages(): int
+    {
+        if ($this->errorTotal == 0) {
+            return 0;
+        }
+        return (int)ceil($this->errorTotal / $this->errorPerPage);
     }
 }

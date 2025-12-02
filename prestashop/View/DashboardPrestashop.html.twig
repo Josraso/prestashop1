@@ -133,7 +133,7 @@
                         <li class="nav-item">
                             <a class="nav-link" id="error-tab" data-toggle="tab" href="#error" role="tab">
                                 <i class="fas fa-times-circle text-danger"></i>
-                                Errores ({{ fsc.importsError|length }})
+                                Errores ({{ fsc.errorTotal }})
                             </a>
                         </li>
                     </ul>
@@ -273,6 +273,22 @@
 
                         {# ERRORES #}
                         <div class="tab-pane fade" id="error" role="tabpanel">
+                            {# Botón borrar todos los errores #}
+                            {% if fsc.errorTotal > 0 %}
+                            <div class="mb-3 d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>Total de errores:</strong> <span class="badge badge-danger">{{ fsc.errorTotal }}</span>
+                                    <small class="text-muted ml-2">(Mostrando página {{ fsc.errorPage + 1 }} de {{ fsc.getErrorPages() }})</small>
+                                </div>
+                                <form method="post" class="d-inline" onsubmit="return confirm('¿Estás seguro de que quieres borrar TODOS los errores?');">
+                                    <input type="hidden" name="action" value="delete-all-errors"/>
+                                    <button type="submit" class="btn btn-sm btn-danger">
+                                        <i class="fas fa-trash-alt"></i> Borrar Todos los Errores
+                                    </button>
+                                </form>
+                            </div>
+                            {% endif %}
+
                             <div class="table-responsive">
                                 <table class="table table-hover">
                                     <thead>
@@ -281,6 +297,7 @@
                                             <th>Pedido PS</th>
                                             <th>Origen</th>
                                             <th>Error</th>
+                                            <th style="width: 80px;">Acciones</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -309,10 +326,19 @@
                                                     <small class="text-danger"><strong>{{ log.mensaje }}</strong></small>
                                                 {% endif %}
                                             </td>
+                                            <td>
+                                                <form method="post" class="d-inline" onsubmit="return confirm('¿Borrar este error?');">
+                                                    <input type="hidden" name="action" value="delete-error"/>
+                                                    <input type="hidden" name="id" value="{{ log.id }}"/>
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Borrar error">
+                                                        <i class="fas fa-trash"></i>
+                                                    </button>
+                                                </form>
+                                            </td>
                                         </tr>
                                         {% else %}
                                         <tr>
-                                            <td colspan="4" class="text-center text-muted py-4">
+                                            <td colspan="5" class="text-center text-muted py-4">
                                                 <i class="fas fa-check-circle fa-2x mb-2 text-success"></i><br>
                                                 No hay errores de importación
                                             </td>
@@ -321,6 +347,42 @@
                                     </tbody>
                                 </table>
                             </div>
+
+                            {# Paginación #}
+                            {% if fsc.getErrorPages() > 1 %}
+                            <nav aria-label="Paginación de errores">
+                                <ul class="pagination justify-content-center">
+                                    {# Botón anterior #}
+                                    <li class="page-item {{ fsc.errorPage == 0 ? 'disabled' : '' }}">
+                                        <a class="page-link" href="{{ fsc.url() }}?error_page={{ fsc.errorPage - 1 }}#error-tab" tabindex="-1">
+                                            <i class="fas fa-chevron-left"></i> Anterior
+                                        </a>
+                                    </li>
+
+                                    {# Páginas #}
+                                    {% for page in 0..(fsc.getErrorPages() - 1) %}
+                                        {% if page < 3 or page > (fsc.getErrorPages() - 4) or (page >= fsc.errorPage - 1 and page <= fsc.errorPage + 1) %}
+                                        <li class="page-item {{ page == fsc.errorPage ? 'active' : '' }}">
+                                            <a class="page-link" href="{{ fsc.url() }}?error_page={{ page }}#error-tab">
+                                                {{ page + 1 }}
+                                            </a>
+                                        </li>
+                                        {% elseif page == 3 or page == fsc.getErrorPages() - 4 %}
+                                        <li class="page-item disabled">
+                                            <span class="page-link">...</span>
+                                        </li>
+                                        {% endif %}
+                                    {% endfor %}
+
+                                    {# Botón siguiente #}
+                                    <li class="page-item {{ fsc.errorPage >= (fsc.getErrorPages() - 1) ? 'disabled' : '' }}">
+                                        <a class="page-link" href="{{ fsc.url() }}?error_page={{ fsc.errorPage + 1 }}#error-tab">
+                                            Siguiente <i class="fas fa-chevron-right"></i>
+                                        </a>
+                                    </li>
+                                </ul>
+                            </nav>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
