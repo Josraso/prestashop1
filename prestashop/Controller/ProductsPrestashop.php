@@ -5,6 +5,7 @@ namespace FacturaScripts\Plugins\Prestashop\Controller;
 use FacturaScripts\Core\Base\Controller;
 use FacturaScripts\Core\Tools;
 use FacturaScripts\Plugins\Prestashop\Model\PrestashopConfig;
+use FacturaScripts\Plugins\Prestashop\Model\PrestashopProductsTemp;
 use FacturaScripts\Plugins\Prestashop\Lib\Actions\ProductsDownload;
 
 /**
@@ -70,24 +71,27 @@ class ProductsPrestashop extends Controller
                 break;
         }
 
-        // Debug: Verificar estado de sesión
-        Tools::log()->info("===== DEBUG SESIÓN =====");
-        Tools::log()->info("Session ID: " . session_id());
-        Tools::log()->info("Session prestashop_products existe: " . (isset($_SESSION['prestashop_products']) ? 'SI' : 'NO'));
-        if (isset($_SESSION['prestashop_products'])) {
-            Tools::log()->info("Productos en sesión: " . count($_SESSION['prestashop_products']));
-            Tools::log()->info("Primer producto: " . json_encode($_SESSION['prestashop_products'][0] ?? 'vacio'));
-        }
-        Tools::log()->info("========================");
+        // Limpiar productos antiguos (más de 24h)
+        PrestashopProductsTemp::cleanOld();
 
-        // Si hay productos en sesión, mostrarlos
-        if (isset($_SESSION['prestashop_products']) && !empty($_SESSION['prestashop_products'])) {
-            $this->products = $_SESSION['prestashop_products'];
+        // Debug: Verificar productos en BD temporal
+        Tools::log()->info("===== DEBUG PRODUCTOS TEMP =====");
+        Tools::log()->info("Session ID: " . session_id());
+        $tempProducts = PrestashopProductsTemp::getProducts();
+        Tools::log()->info("Productos en BD temporal: " . (empty($tempProducts) ? 'NO' : 'SI - ' . count($tempProducts)));
+        if (!empty($tempProducts)) {
+            Tools::log()->info("Primer producto: " . json_encode($tempProducts[0] ?? 'vacio'));
+        }
+        Tools::log()->info("================================");
+
+        // Si hay productos, mostrarlos
+        if (!empty($tempProducts)) {
+            $this->products = $tempProducts;
             $this->productsLoaded = true;
-            $this->totalProducts = count($_SESSION['prestashop_products']);
-            Tools::log()->info("✓ Cargados " . $this->totalProducts . " productos de la sesión para mostrar");
+            $this->totalProducts = count($tempProducts);
+            Tools::log()->info("✓ Cargados " . $this->totalProducts . " productos de BD temporal para mostrar");
         } else {
-            Tools::log()->warning("✗ No hay productos en sesión para mostrar");
+            Tools::log()->warning("✗ No hay productos en BD temporal para mostrar");
         }
     }
 
@@ -144,16 +148,16 @@ class ProductsPrestashop extends Controller
             $downloader = new ProductsDownload();
             $result = $downloader->getAllProducts($offset, $limit);
 
-            // Obtener productos de sesión
-            $allProducts = isset($_SESSION['prestashop_products']) ? $_SESSION['prestashop_products'] : [];
+            // Obtener productos de BD temporal
+            $allProducts = PrestashopProductsTemp::getProducts();
 
             // Agregar nuevos productos
             $allProducts = array_merge($allProducts, $result['products']);
 
-            // Guardar en sesión
-            $_SESSION['prestashop_products'] = $allProducts;
+            // Guardar en BD temporal
+            PrestashopProductsTemp::saveProducts($allProducts);
 
-            Tools::log()->info("Sesión actualizada: " . count($allProducts) . " productos totales guardados");
+            Tools::log()->info("BD temporal actualizada: " . count($allProducts) . " productos totales guardados");
 
             $this->returnJson([
                 'success' => true,
@@ -180,22 +184,22 @@ class ProductsPrestashop extends Controller
     }
 
     /**
-     * Muestra productos de la sesión
+     * Muestra productos de BD temporal
      */
     private function showProductsAction(): void
     {
-        $sessionProducts = isset($_SESSION['prestashop_products']) ? $_SESSION['prestashop_products'] : [];
-        $this->products = $sessionProducts;
+        $tempProducts = PrestashopProductsTemp::getProducts();
+        $this->products = $tempProducts;
         $this->productsLoaded = true;
-        $this->totalProducts = count($sessionProducts);
+        $this->totalProducts = count($tempProducts);
     }
 
     /**
-     * Limpia productos de la sesión
+     * Limpia productos de BD temporal
      */
     private function clearProductsAction(): void
     {
-        $_SESSION['prestashop_products'] = [];
+        PrestashopProductsTemp::clearSession();
         $this->products = [];
         $this->productsLoaded = false;
         $this->totalProducts = 0;
@@ -211,8 +215,8 @@ class ProductsPrestashop extends Controller
             return;
         }
 
-        // Obtener productos de la sesión
-        $allProducts = isset($_SESSION['prestashop_products']) ? $_SESSION['prestashop_products'] : [];
+        // Obtener productos de BD temporal
+        $allProducts = PrestashopProductsTemp::getProducts();
         if (empty($allProducts)) {
             Tools::log()->error('No hay productos descargados. Descarga los productos primero.');
             return;
