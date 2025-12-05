@@ -588,11 +588,12 @@ class ProductsDownload
      *
      * @param string $imageUrl
      * @param string $reference Referencia del producto (para nombrar el archivo)
-     * @return string|null Ruta local de la imagen guardada
+     * @return string|null Nombre del archivo de la imagen guardada
      */
     public function downloadImage(string $imageUrl, string $reference): ?string
     {
         if (empty($imageUrl)) {
+            Tools::log()->warning("URL de imagen vacía para referencia: {$reference}");
             return null;
         }
 
@@ -602,28 +603,66 @@ class ProductsDownload
 
             // Crear directorio si no existe
             if (!is_dir($uploadDir)) {
-                mkdir($uploadDir, 0777, true);
+                if (!mkdir($uploadDir, 0777, true)) {
+                    Tools::log()->error("No se pudo crear directorio: {$uploadDir}");
+                    return null;
+                }
+                Tools::log()->info("Directorio creado: {$uploadDir}");
             }
 
             // Nombre del archivo (sanitizar referencia)
-            $filename = preg_replace('/[^a-zA-Z0-9_-]/', '_', $reference) . '.jpg';
+            $safeName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $reference);
+            $filename = $safeName . '.jpg';
             $localPath = $uploadDir . '/' . $filename;
 
-            // Descargar imagen
-            $imageData = file_get_contents($imageUrl);
+            Tools::log()->info("Descargando imagen desde: {$imageUrl}");
+            Tools::log()->info("Guardando en: {$localPath}");
+
+            // Descargar imagen con contexto para manejar SSL
+            $context = stream_context_create([
+                'http' => [
+                    'timeout' => 30,
+                    'user_agent' => 'FacturaScripts-Prestashop-Plugin'
+                ],
+                'ssl' => [
+                    'verify_peer' => false,
+                    'verify_peer_name' => false
+                ]
+            ]);
+
+            $imageData = @file_get_contents($imageUrl, false, $context);
             if ($imageData === false) {
-                Tools::log()->error("No se pudo descargar la imagen: {$imageUrl}");
+                Tools::log()->error("Error descargando imagen desde: {$imageUrl}");
+                return null;
+            }
+
+            // Verificar que se descargó algo
+            $fileSize = strlen($imageData);
+            if ($fileSize < 100) {
+                Tools::log()->error("Imagen descargada demasiado pequeña ({$fileSize} bytes): {$imageUrl}");
                 return null;
             }
 
             // Guardar imagen
-            file_put_contents($localPath, $imageData);
+            if (file_put_contents($localPath, $imageData) === false) {
+                Tools::log()->error("Error guardando imagen en: {$localPath}");
+                return null;
+            }
 
-            Tools::log()->info("Imagen descargada: {$filename}");
-            return $filename; // Retornar solo el nombre del archivo
+            // Verificar que el archivo existe
+            if (!file_exists($localPath)) {
+                Tools::log()->error("Archivo de imagen no existe después de guardar: {$localPath}");
+                return null;
+            }
+
+            $savedSize = filesize($localPath);
+            Tools::log()->info("✓ Imagen guardada: {$filename} ({$savedSize} bytes)");
+
+            // Retornar solo el nombre del archivo (FacturaScripts espera esto)
+            return $filename;
 
         } catch (\Exception $e) {
-            Tools::log()->error("Error descargando imagen: " . $e->getMessage());
+            Tools::log()->error("Excepción descargando imagen para {$reference}: " . $e->getMessage());
             return null;
         }
     }
@@ -664,11 +703,16 @@ class ProductsDownload
 
                 // Descargar y actualizar imagen
                 if (!empty($productData['image_url'])) {
+                    Tools::log()->info("Intentando descargar imagen para: {$reference}");
                     $imagePath = $this->downloadImage($productData['image_url'], $reference);
                     if ($imagePath) {
                         $producto->imagen = $imagePath;
-                        Tools::log()->info("Imagen actualizada para: {$reference}");
+                        Tools::log()->info("Campo imagen asignado: {$imagePath}");
+                    } else {
+                        Tools::log()->warning("No se pudo descargar imagen para: {$reference}");
                     }
+                } else {
+                    Tools::log()->info("No hay URL de imagen para: {$reference}");
                 }
 
                 // Guardar producto
@@ -676,6 +720,8 @@ class ProductsDownload
                     Tools::log()->error("Error actualizando producto: {$reference}");
                     return false;
                 }
+
+                Tools::log()->info("Producto guardado. Imagen en BD: " . ($producto->imagen ?? 'NULL'));
 
                 // Actualizar stock en la variante
                 $variante->stockfis = $productData['stock'];
@@ -701,11 +747,16 @@ class ProductsDownload
 
                 // Descargar imagen antes de guardar
                 if (!empty($productData['image_url'])) {
+                    Tools::log()->info("Intentando descargar imagen para nuevo producto: {$reference}");
                     $imagePath = $this->downloadImage($productData['image_url'], $reference);
                     if ($imagePath) {
                         $producto->imagen = $imagePath;
-                        Tools::log()->info("Imagen descargada para nuevo producto: {$reference}");
+                        Tools::log()->info("Campo imagen asignado a nuevo producto: {$imagePath}");
+                    } else {
+                        Tools::log()->warning("No se pudo descargar imagen para nuevo producto: {$reference}");
                     }
+                } else {
+                    Tools::log()->info("No hay URL de imagen para nuevo producto: {$reference}");
                 }
 
                 // Guardar producto (esto crea automáticamente una variante)
@@ -713,6 +764,8 @@ class ProductsDownload
                     Tools::log()->error("Error creando producto: {$reference}");
                     return false;
                 }
+
+                Tools::log()->info("Nuevo producto guardado. Imagen en BD: " . ($producto->imagen ?? 'NULL'));
 
                 // Obtener la variante auto-creada y asignarle la referencia y stock
                 $variantes = $producto->getVariants();
