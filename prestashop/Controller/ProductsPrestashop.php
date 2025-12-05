@@ -225,9 +225,22 @@ class ProductsPrestashop extends Controller
         // Obtener IDs seleccionados
         $selectedIds = $this->request->request->get('selected_products', []);
 
+        // Si viene como string serializado de PHP, deserializar
+        if (is_string($selectedIds)) {
+            $selectedIds = @unserialize($selectedIds);
+            if ($selectedIds === false) {
+                $selectedIds = [];
+            }
+        }
+
+        // Convertir índices a integers (vienen como strings)
+        if (is_array($selectedIds)) {
+            $selectedIds = array_map('intval', $selectedIds);
+        }
+
         // DEBUG: Ver qué se recibe
         Tools::log()->info('===== DEBUG IMPORTACIÓN =====');
-        Tools::log()->info('Selected IDs recibidos: ' . json_encode($selectedIds));
+        Tools::log()->info('Selected IDs procesados: ' . json_encode($selectedIds));
         Tools::log()->info('Tipo de selectedIds: ' . gettype($selectedIds));
         Tools::log()->info('Count selectedIds: ' . (is_array($selectedIds) ? count($selectedIds) : 0));
         Tools::log()->info('Total productos en BD: ' . count($allProducts));
