@@ -785,6 +785,7 @@ class ProductsDownload
                 }
 
                 // Actualizar datos del producto
+                $producto->referencia = $reference; // ← REFERENCIA EN EL PRODUCTO
                 $producto->descripcion = $productData['name'];
                 $producto->precio = $productData['price_with_tax'];
                 $producto->nostock = false;
@@ -843,6 +844,7 @@ class ProductsDownload
                 Tools::log()->info("Creando nuevo producto: {$reference}");
 
                 $producto = new Producto();
+                $producto->referencia = $reference; // ← REFERENCIA EN EL PRODUCTO
                 $producto->descripcion = $productData['name'];
                 $producto->precio = $productData['price_with_tax'];
                 $producto->nostock = false;

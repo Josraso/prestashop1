@@ -223,7 +223,13 @@ class ProductsPrestashop extends Controller
      */
     private function clearProductsAction(): void
     {
-        PrestashopProductsTemp::clearSession();
+        // Limpiar TODOS los registros de la tabla, no solo la sesión actual
+        $db = new \FacturaScripts\Core\Base\DataBase();
+        $sql = "DELETE FROM " . PrestashopProductsTemp::tableName();
+        $db->exec($sql);
+
+        Tools::log()->info("✓ Tabla de productos temporales limpiada completamente");
+
         $this->products = [];
         $this->productsLoaded = false;
         $this->totalProducts = 0;
