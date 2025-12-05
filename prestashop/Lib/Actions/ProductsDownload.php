@@ -550,67 +550,101 @@ class ProductsDownload
         try {
             $reference = $productData['reference'];
 
-            // Buscar variante por referencia
+            // Buscar si el producto ya existe por referencia
             $variante = new Variante();
-            $varianteExists = false;
+            $productoExists = $variante->loadFromCode('', [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('referencia', $reference)]);
 
-            if ($variante->loadFromCode('', [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('referencia', $reference)])) {
-                // Producto existe - actualizar
+            if ($productoExists) {
+                // ACTUALIZAR PRODUCTO EXISTENTE
+                Tools::log()->info("Actualizando producto existente: {$reference}");
+
+                // Cargar el producto asociado
                 $producto = new Producto();
-                if ($producto->loadFromCode($variante->idproducto)) {
-                    $varianteExists = true;
-                    Tools::log()->info("Actualizando producto existente: {$reference}");
+                if (!$producto->loadFromCode($variante->idproducto)) {
+                    Tools::log()->error("No se pudo cargar el producto con ID: {$variante->idproducto}");
+                    return false;
                 }
-            }
 
-            if (!$varianteExists) {
-                // Crear nuevo producto
-                $producto = new Producto();
-                Tools::log()->info("Creando nuevo producto: {$reference}");
-            }
+                // Actualizar datos del producto
+                $producto->descripcion = $productData['name'];
+                $producto->precio = $productData['price_with_tax'];
+                $producto->nostock = false;
+                $producto->ventasinstock = false;
+                $producto->bloqueado = !$productData['active'];
+                $producto->codimpuesto = 'IVA21';
 
-            // Establecer datos del producto
-            $producto->descripcion = $productData['name'];
-            $producto->precio = $productData['price_with_tax']; // Precio con IVA
-            $producto->nostock = false; // Controlar stock
-            $producto->ventasinstock = false;
-            $producto->bloqueado = !$productData['active'];
+                // Descargar y actualizar imagen
+                if (!empty($productData['image_url'])) {
+                    $imagePath = $this->downloadImage($productData['image_url'], $reference);
+                    if ($imagePath) {
+                        $producto->imagen = $imagePath;
+                        Tools::log()->info("Imagen actualizada para: {$reference}");
+                    }
+                }
 
-            // IVA por defecto (21%)
-            $producto->codimpuesto = 'IVA21';
+                // Guardar producto
+                if (!$producto->save()) {
+                    Tools::log()->error("Error actualizando producto: {$reference}");
+                    return false;
+                }
 
-            // Guardar producto
-            if (!$producto->save()) {
-                Tools::log()->error("Error guardando producto: {$reference}");
-                return false;
-            }
-
-            // Actualizar variante con referencia y stock
-            if ($varianteExists) {
-                // Ya tenemos la variante cargada
+                // Actualizar stock en la variante
                 $variante->stockfis = $productData['stock'];
-                $variante->save();
+                $variante->precio = $productData['price_with_tax'];
+                if (!$variante->save()) {
+                    Tools::log()->error("Error actualizando stock de variante: {$reference}");
+                    return false;
+                }
+
+                Tools::log()->info("✓ Producto actualizado: {$reference} | Stock: {$productData['stock']} | Precio: {$productData['price_with_tax']}");
+
             } else {
-                // Obtener la variante recién creada
+                // CREAR NUEVO PRODUCTO
+                Tools::log()->info("Creando nuevo producto: {$reference}");
+
+                $producto = new Producto();
+                $producto->descripcion = $productData['name'];
+                $producto->precio = $productData['price_with_tax'];
+                $producto->nostock = false;
+                $producto->ventasinstock = false;
+                $producto->bloqueado = !$productData['active'];
+                $producto->codimpuesto = 'IVA21';
+
+                // Descargar imagen antes de guardar
+                if (!empty($productData['image_url'])) {
+                    $imagePath = $this->downloadImage($productData['image_url'], $reference);
+                    if ($imagePath) {
+                        $producto->imagen = $imagePath;
+                        Tools::log()->info("Imagen descargada para nuevo producto: {$reference}");
+                    }
+                }
+
+                // Guardar producto (esto crea automáticamente una variante)
+                if (!$producto->save()) {
+                    Tools::log()->error("Error creando producto: {$reference}");
+                    return false;
+                }
+
+                // Obtener la variante auto-creada y asignarle la referencia y stock
                 $variantes = $producto->getVariants();
-                if (!empty($variantes)) {
-                    $variante = $variantes[0];
-                    $variante->referencia = $reference;
-                    $variante->stockfis = $productData['stock'];
-                    $variante->save();
+                if (empty($variantes)) {
+                    Tools::log()->error("No se creó variante automática para: {$reference}");
+                    return false;
                 }
+
+                $variante = $variantes[0];
+                $variante->referencia = $reference;
+                $variante->stockfis = $productData['stock'];
+                $variante->precio = $productData['price_with_tax'];
+
+                if (!$variante->save()) {
+                    Tools::log()->error("Error asignando referencia a variante: {$reference}");
+                    return false;
+                }
+
+                Tools::log()->info("✓ Producto creado: {$reference} | Stock: {$productData['stock']} | Precio: {$productData['price_with_tax']}");
             }
 
-            // Descargar y asignar imagen si está disponible
-            if (!empty($productData['image_url'])) {
-                $imagePath = $this->downloadImage($productData['image_url'], $reference);
-                if ($imagePath) {
-                    $producto->imagen = $imagePath;
-                    $producto->save();
-                }
-            }
-
-            Tools::log()->info("Producto importado correctamente: {$reference}");
             return true;
 
         } catch (\Exception $e) {
