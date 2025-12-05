@@ -224,6 +224,16 @@ class ProductsPrestashop extends Controller
 
         // Obtener IDs seleccionados
         $selectedIds = $this->request->request->get('selected_products', []);
+
+        // DEBUG: Ver qué se recibe
+        Tools::log()->info('===== DEBUG IMPORTACIÓN =====');
+        Tools::log()->info('Selected IDs recibidos: ' . json_encode($selectedIds));
+        Tools::log()->info('Tipo de selectedIds: ' . gettype($selectedIds));
+        Tools::log()->info('Count selectedIds: ' . (is_array($selectedIds) ? count($selectedIds) : 0));
+        Tools::log()->info('Total productos en BD: ' . count($allProducts));
+        Tools::log()->info('Índices disponibles: ' . implode(', ', array_keys(array_slice($allProducts, 0, 5))));
+        Tools::log()->info('=============================');
+
         if (empty($selectedIds)) {
             Tools::log()->warning('No se seleccionó ningún producto para importar');
             return;
@@ -239,7 +249,10 @@ class ProductsPrestashop extends Controller
             $this->errorCount = 0;
 
             foreach ($selectedIds as $index) {
+                Tools::log()->info("Procesando índice: {$index}");
+
                 if (!isset($allProducts[$index])) {
+                    Tools::log()->warning("Índice {$index} no existe en allProducts");
                     continue;
                 }
 
