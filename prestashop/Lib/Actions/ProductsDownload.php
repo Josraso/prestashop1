@@ -26,22 +26,22 @@ class ProductsDownload
     }
 
     /**
-     * Obtiene TODOS los productos de PrestaShop con sus combinaciones expandidas
+     * Obtiene productos de PrestaShop por lotes con sus combinaciones expandidas
      *
      * @param int $offset Desde qué producto empezar
      * @param int $limit Cuántos productos obtener
-     * @return array Array con 'products' y 'total'
+     * @return array Array con 'products', 'offset', 'limit'
      */
     public function getAllProducts(int $offset = 0, int $limit = 50): array
     {
         if (!$this->config) {
             Tools::log()->error('PrestaShop: Configuración no encontrada');
-            return ['products' => [], 'total' => 0];
+            return ['products' => []];
         }
 
         if (!$this->connection->isConnected()) {
             Tools::log()->error('PrestaShop: No se pudo conectar con la tienda');
-            return ['products' => [], 'total' => 0];
+            return ['products' => []];
         }
 
         Tools::log()->info("[ProductsDownload] Obteniendo productos (offset: {$offset}, limit: {$limit})...");
@@ -61,14 +61,7 @@ class ProductsDownload
 
             if (!isset($xml->products->product)) {
                 Tools::log()->warning('No se encontraron productos en PrestaShop');
-                return ['products' => [], 'total' => 0];
-            }
-
-            // Obtener total de productos (viene en el atributo)
-            $total = 0;
-            if (isset($xml->products)) {
-                // El total puede venir en diferentes atributos dependiendo de la versión
-                $total = (int)$xml->products->count();
+                return ['products' => []];
             }
 
             $productIds = [];
@@ -97,14 +90,13 @@ class ProductsDownload
 
             return [
                 'products' => $products,
-                'total' => $total,
                 'offset' => $offset,
                 'limit' => $limit
             ];
 
         } catch (\Exception $e) {
             Tools::log()->error('Error obteniendo productos: ' . $e->getMessage());
-            return ['products' => [], 'total' => 0];
+            return ['products' => []];
         }
     }
 
@@ -122,9 +114,9 @@ class ProductsDownload
         try {
             $webService = $this->connection->getWebService();
 
+            // Obtener todos los IDs sin límite para contar el total
             $params = [
-                'display' => '[id]',
-                'limit' => 1
+                'display' => '[id]'
             ];
 
             $xmlString = $webService->get('products', null, null, $params);
@@ -134,7 +126,16 @@ class ProductsDownload
                 return 0;
             }
 
-            return (int)$xml->products->count();
+            // Contar los productos que vienen en la respuesta
+            if (isset($xml->products->product)) {
+                $count = 0;
+                foreach ($xml->products->product as $product) {
+                    $count++;
+                }
+                return $count;
+            }
+
+            return 0;
 
         } catch (\Exception $e) {
             Tools::log()->error('Error obteniendo total de productos: ' . $e->getMessage());

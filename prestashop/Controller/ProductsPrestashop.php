@@ -143,7 +143,6 @@ class ProductsPrestashop extends Controller
             $this->returnJson([
                 'success' => true,
                 'products' => $result['products'],
-                'total' => $result['total'],
                 'offset' => $offset,
                 'downloaded' => count($allProducts)
             ]);
