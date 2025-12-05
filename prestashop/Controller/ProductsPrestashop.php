@@ -70,14 +70,24 @@ class ProductsPrestashop extends Controller
                 break;
         }
 
+        // Debug: Verificar estado de sesión
+        Tools::log()->info("===== DEBUG SESIÓN =====");
+        Tools::log()->info("Session ID: " . session_id());
+        Tools::log()->info("Session prestashop_products existe: " . (isset($_SESSION['prestashop_products']) ? 'SI' : 'NO'));
+        if (isset($_SESSION['prestashop_products'])) {
+            Tools::log()->info("Productos en sesión: " . count($_SESSION['prestashop_products']));
+            Tools::log()->info("Primer producto: " . json_encode($_SESSION['prestashop_products'][0] ?? 'vacio'));
+        }
+        Tools::log()->info("========================");
+
         // Si hay productos en sesión, mostrarlos
         if (isset($_SESSION['prestashop_products']) && !empty($_SESSION['prestashop_products'])) {
             $this->products = $_SESSION['prestashop_products'];
             $this->productsLoaded = true;
             $this->totalProducts = count($_SESSION['prestashop_products']);
-            Tools::log()->info("Cargados " . $this->totalProducts . " productos de la sesión para mostrar");
+            Tools::log()->info("✓ Cargados " . $this->totalProducts . " productos de la sesión para mostrar");
         } else {
-            Tools::log()->info("No hay productos en sesión para mostrar");
+            Tools::log()->warning("✗ No hay productos en sesión para mostrar");
         }
     }
 
@@ -127,7 +137,7 @@ class ProductsPrestashop extends Controller
 
         try {
             $offset = (int)$this->request->request->get('offset', 0);
-            $limit = (int)$this->request->request->get('limit', 10); // Lotes de 10 productos
+            $limit = (int)$this->request->request->get('limit', 5); // Lotes de 5 productos (con atributos es más lento)
 
             Tools::log()->info("Descargando lote de productos: offset={$offset}, limit={$limit}");
 
