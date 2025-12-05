@@ -44,6 +44,11 @@ class ProductsPrestashop extends Controller
     {
         parent::privateCore($response, $user, $permissions);
 
+        // Asegurar que hay sesión iniciada
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+
         // Cargar configuración
         $this->config = PrestashopConfig::getActive();
 
@@ -74,25 +79,44 @@ class ProductsPrestashop extends Controller
         // Limpiar productos antiguos (más de 24h)
         PrestashopProductsTemp::cleanOld();
 
-        // Debug: Verificar productos en BD temporal
+        // Obtener productos de BD temporal
+        $sessionId = session_id();
         Tools::log()->info("===== DEBUG PRODUCTOS TEMP =====");
-        Tools::log()->info("Session ID: " . session_id());
-        $tempProducts = PrestashopProductsTemp::getProducts();
-        Tools::log()->info("Productos en BD temporal: " . (empty($tempProducts) ? 'NO' : 'SI - ' . count($tempProducts)));
-        if (!empty($tempProducts)) {
-            Tools::log()->info("Primer producto: " . json_encode($tempProducts[0] ?? 'vacio'));
-        }
-        Tools::log()->info("================================");
+        Tools::log()->info("Session ID actual: {$sessionId}");
 
-        // Si hay productos, mostrarlos
+        $tempProducts = PrestashopProductsTemp::getProducts();
+
+        Tools::log()->info("Productos en BD temporal: " . (empty($tempProducts) ? 'NO' : 'SI - ' . count($tempProducts)));
+
         if (!empty($tempProducts)) {
+            Tools::log()->info("Primer producto: " . json_encode(array_slice($tempProducts, 0, 1)));
             $this->products = $tempProducts;
             $this->productsLoaded = true;
             $this->totalProducts = count($tempProducts);
             Tools::log()->info("✓ Cargados " . $this->totalProducts . " productos de BD temporal para mostrar");
         } else {
-            Tools::log()->warning("✗ No hay productos en BD temporal para mostrar");
+            Tools::log()->warning("✗ No hay productos en BD temporal");
+            Tools::log()->warning("Verificando si hay productos de otras sesiones...");
+
+            // Intentar recuperar productos de cualquier sesión reciente (últimas 24h)
+            $db = new \FacturaScripts\Core\Base\DataBase();
+            $sql = "SELECT * FROM " . PrestashopProductsTemp::tableName() .
+                   " WHERE fecha_descarga > DATE_SUB(NOW(), INTERVAL 24 HOUR)" .
+                   " ORDER BY fecha_descarga DESC LIMIT 1";
+
+            $data = $db->select($sql);
+            if (!empty($data)) {
+                $productsData = json_decode($data[0]['products_data'], true);
+                if (is_array($productsData) && !empty($productsData)) {
+                    Tools::log()->info("✓ Recuperados " . count($productsData) . " productos de sesión anterior");
+                    $this->products = $productsData;
+                    $this->productsLoaded = true;
+                    $this->totalProducts = count($productsData);
+                }
+            }
         }
+
+        Tools::log()->info("================================");
     }
 
     /**

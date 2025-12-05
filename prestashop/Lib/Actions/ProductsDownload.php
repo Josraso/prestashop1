@@ -710,10 +710,19 @@ class ProductsDownload
 
             Tools::log()->info("Tipo MIME detectado: {$mimeType}, extensión: {$extension}");
 
-            // Nombre del archivo (sanitizar referencia)
+            // Nombre del archivo (sanitizar referencia y hacerlo único)
             $safeName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $reference);
-            $filename = $safeName . '.' . $extension;
+            $timestamp = time();
+            $filename = $safeName . '_' . $timestamp . '.' . $extension;
             $localPath = $uploadDir . '/' . $filename;
+
+            // Si el archivo ya existe, añadir sufijo
+            $counter = 1;
+            while (file_exists($localPath) && $counter < 100) {
+                $filename = $safeName . '_' . $timestamp . '_' . $counter . '.' . $extension;
+                $localPath = $uploadDir . '/' . $filename;
+                $counter++;
+            }
 
             Tools::log()->info("Guardando imagen como: {$filename}");
 
