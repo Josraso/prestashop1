@@ -71,11 +71,10 @@ class ProductsPrestashop extends Controller
         }
 
         // Si hay productos en sesión, mostrarlos
-        $sessionProducts = $this->loadFromSession('prestashop_products', []);
-        if (!empty($sessionProducts)) {
-            $this->products = $sessionProducts;
+        if (isset($_SESSION['prestashop_products']) && !empty($_SESSION['prestashop_products'])) {
+            $this->products = $_SESSION['prestashop_products'];
             $this->productsLoaded = true;
-            $this->totalProducts = count($sessionProducts);
+            $this->totalProducts = count($_SESSION['prestashop_products']);
         }
     }
 
@@ -133,13 +132,13 @@ class ProductsPrestashop extends Controller
             $result = $downloader->getAllProducts($offset, $limit);
 
             // Obtener productos de sesión
-            $allProducts = $this->loadFromSession('prestashop_products', []);
+            $allProducts = isset($_SESSION['prestashop_products']) ? $_SESSION['prestashop_products'] : [];
 
             // Agregar nuevos productos
             $allProducts = array_merge($allProducts, $result['products']);
 
             // Guardar en sesión
-            $this->saveToSession('prestashop_products', $allProducts);
+            $_SESSION['prestashop_products'] = $allProducts;
 
             $this->returnJson([
                 'success' => true,
@@ -170,7 +169,7 @@ class ProductsPrestashop extends Controller
      */
     private function showProductsAction(): void
     {
-        $sessionProducts = $this->loadFromSession('prestashop_products', []);
+        $sessionProducts = isset($_SESSION['prestashop_products']) ? $_SESSION['prestashop_products'] : [];
         $this->products = $sessionProducts;
         $this->productsLoaded = true;
         $this->totalProducts = count($sessionProducts);
@@ -181,7 +180,7 @@ class ProductsPrestashop extends Controller
      */
     private function clearProductsAction(): void
     {
-        $this->saveToSession('prestashop_products', []);
+        $_SESSION['prestashop_products'] = [];
         $this->products = [];
         $this->productsLoaded = false;
         $this->totalProducts = 0;
@@ -198,7 +197,7 @@ class ProductsPrestashop extends Controller
         }
 
         // Obtener productos de la sesión
-        $allProducts = $this->loadFromSession('prestashop_products', []);
+        $allProducts = isset($_SESSION['prestashop_products']) ? $_SESSION['prestashop_products'] : [];
         if (empty($allProducts)) {
             Tools::log()->error('No hay productos descargados. Descarga los productos primero.');
             return;
