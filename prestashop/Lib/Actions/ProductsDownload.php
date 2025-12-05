@@ -99,15 +99,29 @@ class ProductsDownload
         try {
             $webService = $this->connection->getWebService();
 
-            // Obtener producto completo
-            $xmlString = $webService->get('products', $productId, null, ['display' => 'full']);
+            // Obtener producto completo usando filtro
+            $params = [
+                'filter[id]' => '[' . $productId . ']',
+                'display' => 'full',
+                'limit' => 1
+            ];
+
+            $xmlString = $webService->get('products', null, null, $params);
             $xml = simplexml_load_string($xmlString);
 
-            if (!isset($xml->product)) {
+            // Con filtro, el resultado viene en <products><product>
+            if (!isset($xml->products->product)) {
                 return null;
             }
 
-            $product = $xml->product;
+            // Tomar el primer producto del resultado
+            $product = $xml->products->product;
+            if (is_array($product) || $product instanceof \Traversable) {
+                foreach ($product as $p) {
+                    $product = $p;
+                    break;
+                }
+            }
 
             // Extraer nombre (primer idioma disponible)
             $name = $this->extractMultilangField($product->name);
@@ -214,16 +228,36 @@ class ProductsDownload
         try {
             $webService = $this->connection->getWebService();
 
-            // Obtener combinación completa con asociaciones
-            $xmlString = $webService->get('combinations', $combinationId, null, ['display' => 'full']);
+            // Obtener combinación completa con asociaciones usando filtro
+            $params = [
+                'filter[id]' => '[' . $combinationId . ']',
+                'display' => 'full',
+                'limit' => 1
+            ];
+
+            $xmlString = $webService->get('combinations', null, null, $params);
             $xml = simplexml_load_string($xmlString);
 
-            if (!isset($xml->combination->associations->product_option_values->product_option_value)) {
+            // Con filtro viene en <combinations><combination>
+            if (!isset($xml->combinations->combination)) {
+                return [];
+            }
+
+            // Tomar la primera combinación
+            $combination = $xml->combinations->combination;
+            if (is_array($combination) || $combination instanceof \Traversable) {
+                foreach ($combination as $c) {
+                    $combination = $c;
+                    break;
+                }
+            }
+
+            if (!isset($combination->associations->product_option_values->product_option_value)) {
                 return [];
             }
 
             $attributes = [];
-            foreach ($xml->combination->associations->product_option_values->product_option_value as $optionValue) {
+            foreach ($combination->associations->product_option_values->product_option_value as $optionValue) {
                 $optionValueId = (int)$optionValue->id;
 
                 // Obtener el nombre del valor de atributo
@@ -252,14 +286,34 @@ class ProductsDownload
         try {
             $webService = $this->connection->getWebService();
 
-            $xmlString = $webService->get('product_option_values', $optionValueId, null, ['display' => 'full']);
+            $params = [
+                'filter[id]' => '[' . $optionValueId . ']',
+                'display' => 'full',
+                'limit' => 1
+            ];
+
+            $xmlString = $webService->get('product_option_values', null, null, $params);
             $xml = simplexml_load_string($xmlString);
 
-            if (!isset($xml->product_option_value->name)) {
+            // Con filtro viene en <product_option_values><product_option_value>
+            if (!isset($xml->product_option_values->product_option_value)) {
                 return null;
             }
 
-            return $this->extractMultilangField($xml->product_option_value->name);
+            // Tomar el primer valor
+            $optionValue = $xml->product_option_values->product_option_value;
+            if (is_array($optionValue) || $optionValue instanceof \Traversable) {
+                foreach ($optionValue as $v) {
+                    $optionValue = $v;
+                    break;
+                }
+            }
+
+            if (!isset($optionValue->name)) {
+                return null;
+            }
+
+            return $this->extractMultilangField($optionValue->name);
 
         } catch (\Exception $e) {
             return null;
@@ -291,6 +345,9 @@ class ProductsDownload
                 // Usar referencia de la combinación, o generar una si está vacía
                 $reference = !empty($combo['reference']) ? $combo['reference'] : $productDetails['reference'] . '-' . $combo['id'];
 
+                // Verificar si el producto ya existe en FacturaScripts
+                $exists = $this->checkProductExists($reference);
+
                 $products[] = [
                     'ps_product_id' => $productDetails['id'],
                     'ps_combination_id' => $combo['id'],
@@ -300,12 +357,16 @@ class ProductsDownload
                     'stock' => $combo['quantity'],
                     'image_url' => $productDetails['image_url'],
                     'active' => $productDetails['active'],
-                    'has_combination' => true
+                    'has_combination' => true,
+                    'exists' => $exists
                 ];
             }
         } else {
             // Producto sin combinaciones - incluirlo tal cual
             $priceWithTax = $productDetails['price'] * 1.21;
+
+            // Verificar si el producto ya existe en FacturaScripts
+            $exists = $this->checkProductExists($productDetails['reference']);
 
             $products[] = [
                 'ps_product_id' => $productDetails['id'],
@@ -316,11 +377,32 @@ class ProductsDownload
                 'stock' => $productDetails['stock'],
                 'image_url' => $productDetails['image_url'],
                 'active' => $productDetails['active'],
-                'has_combination' => false
+                'has_combination' => false,
+                'exists' => $exists
             ];
         }
 
         return $products;
+    }
+
+    /**
+     * Verifica si un producto existe en FacturaScripts por su referencia
+     *
+     * @param string $reference
+     * @return bool
+     */
+    private function checkProductExists(string $reference): bool
+    {
+        if (empty($reference)) {
+            return false;
+        }
+
+        try {
+            $variante = new Variante();
+            return $variante->loadFromCode('', [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('referencia', $reference)]);
+        } catch (\Exception $e) {
+            return false;
+        }
     }
 
     /**

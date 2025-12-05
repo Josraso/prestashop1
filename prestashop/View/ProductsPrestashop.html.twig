@@ -96,7 +96,7 @@
                                 </thead>
                                 <tbody>
                                     {% for index, product in fsc.products %}
-                                    <tr class="{% if not product.active %}text-muted{% endif %}">
+                                    <tr class="{% if product.exists %}product-exists{% endif %} {% if not product.active %}text-muted{% endif %}">
                                         <td>
                                             <input type="checkbox"
                                                    name="selected_products[]"
@@ -127,6 +127,9 @@
                                         </td>
                                         <td>
                                             {{ product.name }}
+                                            {% if product.exists %}
+                                                <br><small class="text-success"><i class="fas fa-check-circle"></i> Ya existe en FacturaScripts (se actualizará)</small>
+                                            {% endif %}
                                             {% if not product.active %}
                                                 <br><small class="text-warning"><i class="fas fa-exclamation-triangle"></i> Inactivo en PrestaShop</small>
                                             {% endif %}
@@ -263,6 +266,16 @@
         padding: 2px 6px;
         background-color: #f8f9fa;
         border-radius: 3px;
+    }
+
+    /* Productos que ya existen en FacturaScripts */
+    .product-exists {
+        background-color: #d4edda !important;
+        border-left: 3px solid #28a745;
+    }
+
+    .product-exists:hover {
+        background-color: #c3e6cb !important;
     }
 </style>
 {% endblock %}
