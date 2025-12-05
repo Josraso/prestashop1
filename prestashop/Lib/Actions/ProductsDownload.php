@@ -184,9 +184,6 @@ class ProductsDownload
             // Precio base
             $price = (float)$product->price;
 
-            // Stock (cantidad disponible)
-            $stock = (int)$product->quantity;
-
             // Referencia
             $reference = (string)$product->reference;
 
@@ -198,6 +195,13 @@ class ProductsDownload
 
             // Obtener combinaciones
             $combinations = $this->getProductCombinations($productId);
+
+            // Stock: Si tiene combinaciones, el stock se obtiene de cada combinación
+            // Si NO tiene combinaciones, obtener stock desde stock_availables
+            $stock = 0;
+            if (empty($combinations)) {
+                $stock = $this->getStockForProduct($productId);
+            }
 
             return [
                 'id' => $productId,
@@ -244,7 +248,9 @@ class ProductsDownload
                 $comboId = (int)$combo->id;
                 $reference = (string)$combo->reference;
                 $priceImpact = (float)$combo->price;
-                $quantity = (int)$combo->quantity;
+
+                // Obtener stock real desde stock_availables
+                $quantity = $this->getStockForCombination($productId, $comboId);
 
                 // Obtener atributos de esta combinación (necesario para identificar)
                 $attributes = $this->getCombinationAttributeValues($comboId);
@@ -263,6 +269,89 @@ class ProductsDownload
         } catch (\Exception $e) {
             Tools::log()->error("Error obteniendo combinaciones del producto {$productId}: " . $e->getMessage());
             return [];
+        }
+    }
+
+    /**
+     * Obtiene el stock real de una combinación desde stock_availables
+     *
+     * @param int $productId
+     * @param int $combinationId
+     * @return int
+     */
+    private function getStockForCombination(int $productId, int $combinationId): int
+    {
+        try {
+            $webService = $this->connection->getWebService();
+
+            $params = [
+                'filter[id_product]' => $productId,
+                'filter[id_product_attribute]' => $combinationId,
+                'display' => '[quantity]'
+            ];
+
+            $xmlString = $webService->get('stock_availables', null, null, $params);
+            $xml = simplexml_load_string($xmlString);
+
+            if (isset($xml->stock_availables->stock_available)) {
+                $stock = $xml->stock_availables->stock_available;
+
+                // Si hay múltiples resultados, tomar el primero
+                if (is_array($stock) || $stock instanceof \Traversable) {
+                    foreach ($stock as $s) {
+                        return (int)$s->quantity;
+                    }
+                } else {
+                    return (int)$stock->quantity;
+                }
+            }
+
+            return 0;
+
+        } catch (\Exception $e) {
+            Tools::log()->warning("No se pudo obtener stock para combinación {$combinationId}: " . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Obtiene el stock real de un producto sin combinaciones desde stock_availables
+     *
+     * @param int $productId
+     * @return int
+     */
+    private function getStockForProduct(int $productId): int
+    {
+        try {
+            $webService = $this->connection->getWebService();
+
+            $params = [
+                'filter[id_product]' => $productId,
+                'filter[id_product_attribute]' => 0,  // 0 = producto sin combinaciones
+                'display' => '[quantity]'
+            ];
+
+            $xmlString = $webService->get('stock_availables', null, null, $params);
+            $xml = simplexml_load_string($xmlString);
+
+            if (isset($xml->stock_availables->stock_available)) {
+                $stock = $xml->stock_availables->stock_available;
+
+                // Si hay múltiples resultados, tomar el primero
+                if (is_array($stock) || $stock instanceof \Traversable) {
+                    foreach ($stock as $s) {
+                        return (int)$s->quantity;
+                    }
+                } else {
+                    return (int)$stock->quantity;
+                }
+            }
+
+            return 0;
+
+        } catch (\Exception $e) {
+            Tools::log()->warning("No se pudo obtener stock para producto {$productId}: " . $e->getMessage());
+            return 0;
         }
     }
 
