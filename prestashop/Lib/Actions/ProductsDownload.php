@@ -72,21 +72,32 @@ class ProductsDownload
             Tools::log()->info('[ProductsDownload] Encontrados ' . count($productIds) . ' productos en este lote');
 
             // Obtener detalles completos de cada producto
+            $processed = 0;
+            $errors = 0;
             foreach ($productIds as $productId) {
                 try {
+                    Tools::log()->info("[ProductsDownload] Procesando producto ID {$productId}...");
+
                     $productDetails = $this->getProductDetails($productId);
                     if ($productDetails) {
                         // Expandir combinaciones
                         $expandedProducts = $this->expandProductCombinations($productDetails);
                         $products = array_merge($products, $expandedProducts);
+                        $processed++;
+                        Tools::log()->info("[ProductsDownload] ✓ Producto ID {$productId} procesado: " . count($expandedProducts) . " variante(s)");
+                    } else {
+                        Tools::log()->warning("[ProductsDownload] Producto ID {$productId} sin detalles disponibles");
+                        $errors++;
                     }
                 } catch (\Exception $e) {
-                    Tools::log()->error("Error obteniendo producto ID {$productId}: " . $e->getMessage());
-                    continue;
+                    Tools::log()->error("[ProductsDownload] Error obteniendo producto ID {$productId}: " . $e->getMessage());
+                    Tools::log()->error("[ProductsDownload] Stack trace: " . $e->getTraceAsString());
+                    $errors++;
+                    continue; // Continuar con el siguiente producto
                 }
             }
 
-            Tools::log()->info('[ProductsDownload] Total de productos con combinaciones expandidas en este lote: ' . count($products));
+            Tools::log()->info("[ProductsDownload] Resumen del lote: {$processed} productos procesados, {$errors} errores, " . count($products) . " variantes totales");
 
             return [
                 'products' => $products,
@@ -290,8 +301,17 @@ class ProductsDownload
                 'display' => '[quantity]'
             ];
 
-            $xmlString = $webService->get('stock_availables', null, null, $params);
-            $xml = simplexml_load_string($xmlString);
+            $xmlString = @$webService->get('stock_availables', null, null, $params);
+            if ($xmlString === false) {
+                Tools::log()->debug("No se pudo obtener stock_availables para producto {$productId}, combinación {$combinationId}");
+                return 0;
+            }
+
+            $xml = @simplexml_load_string($xmlString);
+            if ($xml === false) {
+                Tools::log()->debug("Error parseando XML de stock para combinación {$combinationId}");
+                return 0;
+            }
 
             if (isset($xml->stock_availables->stock_available)) {
                 $stock = $xml->stock_availables->stock_available;
@@ -299,17 +319,22 @@ class ProductsDownload
                 // Si hay múltiples resultados, tomar el primero
                 if (is_array($stock) || $stock instanceof \Traversable) {
                     foreach ($stock as $s) {
-                        return (int)$s->quantity;
+                        $quantity = (int)$s->quantity;
+                        Tools::log()->debug("Stock para combinación {$combinationId}: {$quantity}");
+                        return $quantity;
                     }
                 } else {
-                    return (int)$stock->quantity;
+                    $quantity = (int)$stock->quantity;
+                    Tools::log()->debug("Stock para combinación {$combinationId}: {$quantity}");
+                    return $quantity;
                 }
             }
 
+            Tools::log()->debug("No se encontró stock_available para combinación {$combinationId}, usando 0");
             return 0;
 
         } catch (\Exception $e) {
-            Tools::log()->warning("No se pudo obtener stock para combinación {$combinationId}: " . $e->getMessage());
+            Tools::log()->warning("Excepción obteniendo stock para combinación {$combinationId}: " . $e->getMessage());
             return 0;
         }
     }
@@ -331,8 +356,17 @@ class ProductsDownload
                 'display' => '[quantity]'
             ];
 
-            $xmlString = $webService->get('stock_availables', null, null, $params);
-            $xml = simplexml_load_string($xmlString);
+            $xmlString = @$webService->get('stock_availables', null, null, $params);
+            if ($xmlString === false) {
+                Tools::log()->debug("No se pudo obtener stock_availables para producto {$productId}");
+                return 0;
+            }
+
+            $xml = @simplexml_load_string($xmlString);
+            if ($xml === false) {
+                Tools::log()->debug("Error parseando XML de stock para producto {$productId}");
+                return 0;
+            }
 
             if (isset($xml->stock_availables->stock_available)) {
                 $stock = $xml->stock_availables->stock_available;
@@ -340,17 +374,22 @@ class ProductsDownload
                 // Si hay múltiples resultados, tomar el primero
                 if (is_array($stock) || $stock instanceof \Traversable) {
                     foreach ($stock as $s) {
-                        return (int)$s->quantity;
+                        $quantity = (int)$s->quantity;
+                        Tools::log()->debug("Stock para producto {$productId}: {$quantity}");
+                        return $quantity;
                     }
                 } else {
-                    return (int)$stock->quantity;
+                    $quantity = (int)$stock->quantity;
+                    Tools::log()->debug("Stock para producto {$productId}: {$quantity}");
+                    return $quantity;
                 }
             }
 
+            Tools::log()->debug("No se encontró stock_available para producto {$productId}, usando 0");
             return 0;
 
         } catch (\Exception $e) {
-            Tools::log()->warning("No se pudo obtener stock para producto {$productId}: " . $e->getMessage());
+            Tools::log()->warning("Excepción obteniendo stock para producto {$productId}: " . $e->getMessage());
             return 0;
         }
     }
@@ -603,20 +642,21 @@ class ProductsDownload
 
             // Crear directorio si no existe
             if (!is_dir($uploadDir)) {
-                if (!mkdir($uploadDir, 0777, true)) {
+                if (!mkdir($uploadDir, 0755, true)) {
                     Tools::log()->error("No se pudo crear directorio: {$uploadDir}");
                     return null;
                 }
+                chmod($uploadDir, 0755);
                 Tools::log()->info("Directorio creado: {$uploadDir}");
             }
 
-            // Nombre del archivo (sanitizar referencia)
-            $safeName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $reference);
-            $filename = $safeName . '.jpg';
-            $localPath = $uploadDir . '/' . $filename;
+            // Verificar permisos de escritura
+            if (!is_writable($uploadDir)) {
+                Tools::log()->error("Directorio sin permisos de escritura: {$uploadDir}");
+                return null;
+            }
 
             Tools::log()->info("Descargando imagen desde: {$imageUrl}");
-            Tools::log()->info("Guardando en: {$localPath}");
 
             // Descargar imagen con contexto para manejar SSL
             $context = stream_context_create([
@@ -643,26 +683,68 @@ class ProductsDownload
                 return null;
             }
 
+            Tools::log()->info("Imagen descargada correctamente: {$fileSize} bytes");
+
+            // Detectar tipo MIME real de la imagen
+            $finfo = new \finfo(FILEINFO_MIME_TYPE);
+            $mimeType = $finfo->buffer($imageData);
+
+            // Determinar extensión basada en MIME type
+            $extension = 'jpg'; // Por defecto
+            switch ($mimeType) {
+                case 'image/jpeg':
+                    $extension = 'jpg';
+                    break;
+                case 'image/png':
+                    $extension = 'png';
+                    break;
+                case 'image/gif':
+                    $extension = 'gif';
+                    break;
+                case 'image/webp':
+                    $extension = 'webp';
+                    break;
+                default:
+                    Tools::log()->warning("Tipo MIME desconocido: {$mimeType}, usando .jpg");
+            }
+
+            Tools::log()->info("Tipo MIME detectado: {$mimeType}, extensión: {$extension}");
+
+            // Nombre del archivo (sanitizar referencia)
+            $safeName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $reference);
+            $filename = $safeName . '.' . $extension;
+            $localPath = $uploadDir . '/' . $filename;
+
+            Tools::log()->info("Guardando imagen como: {$filename}");
+
             // Guardar imagen
             if (file_put_contents($localPath, $imageData) === false) {
                 Tools::log()->error("Error guardando imagen en: {$localPath}");
                 return null;
             }
 
-            // Verificar que el archivo existe
+            // Establecer permisos correctos
+            chmod($localPath, 0644);
+
+            // Verificar que el archivo existe y tiene el tamaño correcto
             if (!file_exists($localPath)) {
                 Tools::log()->error("Archivo de imagen no existe después de guardar: {$localPath}");
                 return null;
             }
 
             $savedSize = filesize($localPath);
-            Tools::log()->info("✓ Imagen guardada: {$filename} ({$savedSize} bytes)");
+            if ($savedSize != $fileSize) {
+                Tools::log()->warning("Tamaño del archivo guardado ({$savedSize}) != descargado ({$fileSize})");
+            }
+
+            Tools::log()->info("✓ Imagen guardada correctamente: {$filename} ({$savedSize} bytes, permisos: 0644)");
 
             // Retornar solo el nombre del archivo (FacturaScripts espera esto)
             return $filename;
 
         } catch (\Exception $e) {
             Tools::log()->error("Excepción descargando imagen para {$reference}: " . $e->getMessage());
+            Tools::log()->error("Stack trace: " . $e->getTraceAsString());
             return null;
         }
     }
@@ -723,15 +805,29 @@ class ProductsDownload
 
                 Tools::log()->info("Producto guardado. Imagen en BD: " . ($producto->imagen ?? 'NULL'));
 
-                // Actualizar stock en la variante
+                // Recargar la variante para asegurar datos frescos
+                if (!$variante->loadFromCode('', [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('referencia', $reference)])) {
+                    Tools::log()->error("No se pudo recargar variante después de guardar producto: {$reference}");
+                    return false;
+                }
+
+                // Actualizar stock y precio en la variante
                 $variante->stockfis = $productData['stock'];
                 $variante->precio = $productData['price_with_tax'];
+                $variante->coste = 0; // Resetear coste si es necesario
+
                 if (!$variante->save()) {
                     Tools::log()->error("Error actualizando stock de variante: {$reference}");
                     return false;
                 }
 
-                Tools::log()->info("✓ Producto actualizado: {$reference} | Stock: {$productData['stock']} | Precio: {$productData['price_with_tax']}");
+                // Verificar que se guardó correctamente
+                $varianteCheck = new Variante();
+                if ($varianteCheck->loadFromCode('', [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('referencia', $reference)])) {
+                    Tools::log()->info("Verificación BD - Stock: {$varianteCheck->stockfis}, Precio: {$varianteCheck->precio}, ID Producto: {$varianteCheck->idproducto}");
+                }
+
+                Tools::log()->info("✓ Producto actualizado: {$reference} | Stock: {$productData['stock']} | Precio: {$productData['price_with_tax']} | Bloqueado: " . ($producto->bloqueado ? 'SÍ' : 'NO'));
 
             } else {
                 // CREAR NUEVO PRODUCTO
@@ -778,13 +874,24 @@ class ProductsDownload
                 $variante->referencia = $reference;
                 $variante->stockfis = $productData['stock'];
                 $variante->precio = $productData['price_with_tax'];
+                $variante->coste = 0;
 
                 if (!$variante->save()) {
                     Tools::log()->error("Error asignando referencia a variante: {$reference}");
                     return false;
                 }
 
-                Tools::log()->info("✓ Producto creado: {$reference} | Stock: {$productData['stock']} | Precio: {$productData['price_with_tax']}");
+                Tools::log()->info("Variante guardada. ID: {$variante->idvariante}, Ref: {$variante->referencia}");
+
+                // Verificar que se guardó correctamente
+                $varianteCheck = new Variante();
+                if ($varianteCheck->loadFromCode('', [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('referencia', $reference)])) {
+                    Tools::log()->info("Verificación BD - Stock: {$varianteCheck->stockfis}, Precio: {$varianteCheck->precio}, ID Producto: {$varianteCheck->idproducto}");
+                } else {
+                    Tools::log()->warning("ADVERTENCIA: No se pudo verificar variante recién creada para: {$reference}");
+                }
+
+                Tools::log()->info("✓ Producto creado: {$reference} | Stock: {$productData['stock']} | Precio: {$productData['price_with_tax']} | Bloqueado: " . ($producto->bloqueado ? 'SÍ' : 'NO'));
             }
 
             return true;
