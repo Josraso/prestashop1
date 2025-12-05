@@ -510,8 +510,9 @@ class ProductsDownload
         // Si el producto tiene combinaciones, expandir cada una
         if (!empty($productDetails['combinations'])) {
             foreach ($productDetails['combinations'] as $combo) {
-                // Calcular precio final con IVA (precio base + impacto de combinación) * 1.21
-                $priceWithTax = ($productDetails['price'] + $combo['price_impact']) * 1.21;
+                // Calcular precio SIN IVA (precio base + impacto de combinación)
+                // FacturaScripts añade el IVA automáticamente según el codimpuesto
+                $price = $productDetails['price'] + $combo['price_impact'];
 
                 // Concatenar nombre con atributos: "Producto - Attr1 - Attr2"
                 $fullName = $productDetails['name'];
@@ -530,7 +531,7 @@ class ProductsDownload
                     'ps_combination_id' => $combo['id'],
                     'reference' => $reference,
                     'name' => $fullName,
-                    'price_with_tax' => round($priceWithTax, 2),
+                    'price' => round($price, 2), // SIN IVA
                     'stock' => $combo['quantity'],
                     'image_url' => $productDetails['image_url'],
                     'active' => $productDetails['active'],
@@ -539,8 +540,8 @@ class ProductsDownload
                 ];
             }
         } else {
-            // Producto sin combinaciones - incluirlo tal cual
-            $priceWithTax = $productDetails['price'] * 1.21;
+            // Producto sin combinaciones - precio SIN IVA
+            $price = $productDetails['price'];
 
             // Verificar si el producto ya existe en FacturaScripts
             $exists = $this->checkProductExists($productDetails['reference']);
@@ -550,7 +551,7 @@ class ProductsDownload
                 'ps_combination_id' => null,
                 'reference' => $productDetails['reference'],
                 'name' => $productDetails['name'],
-                'price_with_tax' => round($priceWithTax, 2),
+                'price' => round($price, 2), // SIN IVA
                 'stock' => $productDetails['stock'],
                 'image_url' => $productDetails['image_url'],
                 'active' => $productDetails['active'],
@@ -623,13 +624,13 @@ class ProductsDownload
     }
 
     /**
-     * Descarga una imagen desde PrestaShop y la guarda localmente
+     * Descarga una imagen desde PrestaShop y la guarda en attached_files
      *
      * @param string $imageUrl
      * @param string $reference Referencia del producto (para nombrar el archivo)
-     * @return string|null Nombre del archivo de la imagen guardada
+     * @return int|null ID del archivo en attached_files, o null si falla
      */
-    public function downloadImage(string $imageUrl, string $reference): ?string
+    public function downloadImage(string $imageUrl, string $reference): ?int
     {
         if (empty($imageUrl)) {
             Tools::log()->warning("URL de imagen vacía para referencia: {$reference}");
@@ -748,13 +749,95 @@ class ProductsDownload
 
             Tools::log()->info("✓ Imagen guardada correctamente: {$filename} ({$savedSize} bytes, permisos: 0644)");
 
-            // Retornar solo el nombre del archivo (FacturaScripts espera esto)
-            return $filename;
+            // Crear registro en attached_files
+            $db = new \FacturaScripts\Core\Base\DataBase();
+
+            // Ruta relativa desde FS_FOLDER
+            $relativePath = 'MyFiles/Product/' . $filename;
+
+            // Obtener fecha y hora actuales
+            $now = new \DateTime();
+            $date = $now->format('Y-m-d');
+            $time = $now->format('H:i:s');
+
+            $sql = "INSERT INTO attached_files (date, hour, filename, path, mimetype, size)
+                    VALUES (" . $db->var2str($date) . ", " . $db->var2str($time) . ", " .
+                    $db->var2str($filename) . ", " . $db->var2str($relativePath) . ", " .
+                    $db->var2str($mimeType) . ", " . $db->var2str($savedSize) . ")";
+
+            if (!$db->exec($sql)) {
+                Tools::log()->error("Error insertando en attached_files: " . $db->lastError());
+                return null;
+            }
+
+            // Obtener el ID auto-generado
+            $idfile = $db->lastval();
+
+            if (!$idfile) {
+                Tools::log()->error("No se pudo obtener el ID del archivo insertado");
+                return null;
+            }
+
+            Tools::log()->info("✓ Registro creado en attached_files: idfile={$idfile}, filename={$filename}");
+
+            return $idfile;
 
         } catch (\Exception $e) {
             Tools::log()->error("Excepción descargando imagen para {$reference}: " . $e->getMessage());
             Tools::log()->error("Stack trace: " . $e->getTraceAsString());
             return null;
+        }
+    }
+
+    /**
+     * Vincula un archivo a un producto mediante attached_files_rel
+     *
+     * @param int $idfile ID del archivo en attached_files
+     * @param int $idproducto ID del producto
+     * @param string $referencia Referencia del producto
+     * @return bool
+     */
+    private function linkFileToProduct(int $idfile, int $idproducto, string $referencia): bool
+    {
+        try {
+            $db = new \FacturaScripts\Core\Base\DataBase();
+
+            // Verificar si ya existe una relación para este producto
+            $sqlCheck = "SELECT id FROM attached_files_rel
+                         WHERE model = 'Producto' AND modelid = " . $db->var2str($idproducto);
+            $existing = $db->select($sqlCheck);
+
+            if (!empty($existing)) {
+                // Actualizar relación existente
+                $sqlUpdate = "UPDATE attached_files_rel SET idfile = " . $db->var2str($idfile) . ",
+                              creationdate = NOW()
+                              WHERE model = 'Producto' AND modelid = " . $db->var2str($idproducto);
+
+                if (!$db->exec($sqlUpdate)) {
+                    Tools::log()->error("Error actualizando attached_files_rel: " . $db->lastError());
+                    return false;
+                }
+
+                Tools::log()->info("✓ Relación actualizada en attached_files_rel: idproducto={$idproducto}, idfile={$idfile}");
+            } else {
+                // Crear nueva relación
+                $sqlInsert = "INSERT INTO attached_files_rel (idfile, model, modelid, modelcode, creationdate)
+                              VALUES (" . $db->var2str($idfile) . ", 'Producto', " .
+                              $db->var2str($idproducto) . ", " . $db->var2str($referencia) . ", NOW())";
+
+                if (!$db->exec($sqlInsert)) {
+                    Tools::log()->error("Error insertando en attached_files_rel: " . $db->lastError());
+                    return false;
+                }
+
+                Tools::log()->info("✓ Relación creada en attached_files_rel: idproducto={$idproducto}, idfile={$idfile}");
+            }
+
+            return true;
+
+        } catch (\Exception $e) {
+            Tools::log()->error("Error vinculando archivo a producto: " . $e->getMessage());
+            return false;
         }
     }
 
@@ -787,25 +870,11 @@ class ProductsDownload
                 // Actualizar datos del producto
                 $producto->referencia = $reference; // ← REFERENCIA EN EL PRODUCTO
                 $producto->descripcion = $productData['name'];
-                $producto->precio = $productData['price_with_tax'];
+                $producto->precio = $productData['price']; // Precio SIN IVA
                 $producto->nostock = false;
                 $producto->ventasinstock = false;
                 $producto->bloqueado = !$productData['active'];
                 $producto->codimpuesto = 'IVA21';
-
-                // Descargar y actualizar imagen
-                if (!empty($productData['image_url'])) {
-                    Tools::log()->info("Intentando descargar imagen para: {$reference}");
-                    $imagePath = $this->downloadImage($productData['image_url'], $reference);
-                    if ($imagePath) {
-                        $producto->imagen = $imagePath;
-                        Tools::log()->info("Campo imagen asignado: {$imagePath}");
-                    } else {
-                        Tools::log()->warning("No se pudo descargar imagen para: {$reference}");
-                    }
-                } else {
-                    Tools::log()->info("No hay URL de imagen para: {$reference}");
-                }
 
                 // Guardar producto
                 if (!$producto->save()) {
@@ -813,7 +882,22 @@ class ProductsDownload
                     return false;
                 }
 
-                Tools::log()->info("Producto guardado. Imagen en BD: " . ($producto->imagen ?? 'NULL'));
+                // Descargar y vincular imagen mediante attached_files
+                if (!empty($productData['image_url'])) {
+                    Tools::log()->info("Intentando descargar imagen para: {$reference}");
+                    $idfile = $this->downloadImage($productData['image_url'], $reference);
+                    if ($idfile) {
+                        // Vincular imagen al producto mediante attached_files_rel
+                        $this->linkFileToProduct($idfile, $producto->idproducto, $reference);
+                        Tools::log()->info("Imagen vinculada al producto mediante attached_files_rel");
+                    } else {
+                        Tools::log()->warning("No se pudo descargar imagen para: {$reference}");
+                    }
+                } else {
+                    Tools::log()->info("No hay URL de imagen para: {$reference}");
+                }
+
+                Tools::log()->info("Producto guardado: {$reference}");
 
                 // Recargar la variante para asegurar datos frescos
                 if (!$variante->loadFromCode('', [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('referencia', $reference)])) {
@@ -823,7 +907,7 @@ class ProductsDownload
 
                 // Actualizar stock y precio en la variante
                 $variante->stockfis = $productData['stock'];
-                $variante->precio = $productData['price_with_tax'];
+                $variante->precio = $productData['price']; // Precio SIN IVA
                 $variante->coste = 0; // Resetear coste si es necesario
 
                 if (!$variante->save()) {
@@ -834,10 +918,10 @@ class ProductsDownload
                 // Verificar que se guardó correctamente
                 $varianteCheck = new Variante();
                 if ($varianteCheck->loadFromCode('', [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('referencia', $reference)])) {
-                    Tools::log()->info("Verificación BD - Stock: {$varianteCheck->stockfis}, Precio: {$varianteCheck->precio}, ID Producto: {$varianteCheck->idproducto}");
+                    Tools::log()->info("Verificación BD - Stock: {$varianteCheck->stockfis}, Precio (sin IVA): {$varianteCheck->precio}, ID Producto: {$varianteCheck->idproducto}");
                 }
 
-                Tools::log()->info("✓ Producto actualizado: {$reference} | Stock: {$productData['stock']} | Precio: {$productData['price_with_tax']} | Bloqueado: " . ($producto->bloqueado ? 'SÍ' : 'NO'));
+                Tools::log()->info("✓ Producto actualizado: {$reference} | Stock: {$productData['stock']} | Precio (sin IVA): {$productData['price']} | Bloqueado: " . ($producto->bloqueado ? 'SÍ' : 'NO'));
 
             } else {
                 // CREAR NUEVO PRODUCTO
@@ -846,25 +930,11 @@ class ProductsDownload
                 $producto = new Producto();
                 $producto->referencia = $reference; // ← REFERENCIA EN EL PRODUCTO
                 $producto->descripcion = $productData['name'];
-                $producto->precio = $productData['price_with_tax'];
+                $producto->precio = $productData['price']; // Precio SIN IVA
                 $producto->nostock = false;
                 $producto->ventasinstock = false;
                 $producto->bloqueado = !$productData['active'];
                 $producto->codimpuesto = 'IVA21';
-
-                // Descargar imagen antes de guardar
-                if (!empty($productData['image_url'])) {
-                    Tools::log()->info("Intentando descargar imagen para nuevo producto: {$reference}");
-                    $imagePath = $this->downloadImage($productData['image_url'], $reference);
-                    if ($imagePath) {
-                        $producto->imagen = $imagePath;
-                        Tools::log()->info("Campo imagen asignado a nuevo producto: {$imagePath}");
-                    } else {
-                        Tools::log()->warning("No se pudo descargar imagen para nuevo producto: {$reference}");
-                    }
-                } else {
-                    Tools::log()->info("No hay URL de imagen para nuevo producto: {$reference}");
-                }
 
                 // Guardar producto (esto crea automáticamente una variante)
                 if (!$producto->save()) {
@@ -872,7 +942,22 @@ class ProductsDownload
                     return false;
                 }
 
-                Tools::log()->info("Nuevo producto guardado. Imagen en BD: " . ($producto->imagen ?? 'NULL'));
+                Tools::log()->info("Nuevo producto guardado: {$reference}");
+
+                // Descargar y vincular imagen mediante attached_files
+                if (!empty($productData['image_url'])) {
+                    Tools::log()->info("Intentando descargar imagen para nuevo producto: {$reference}");
+                    $idfile = $this->downloadImage($productData['image_url'], $reference);
+                    if ($idfile) {
+                        // Vincular imagen al producto mediante attached_files_rel
+                        $this->linkFileToProduct($idfile, $producto->idproducto, $reference);
+                        Tools::log()->info("Imagen vinculada al producto mediante attached_files_rel");
+                    } else {
+                        Tools::log()->warning("No se pudo descargar imagen para nuevo producto: {$reference}");
+                    }
+                } else {
+                    Tools::log()->info("No hay URL de imagen para nuevo producto: {$reference}");
+                }
 
                 // Obtener la variante auto-creada y asignarle la referencia y stock
                 $variantes = $producto->getVariants();
@@ -884,7 +969,7 @@ class ProductsDownload
                 $variante = $variantes[0];
                 $variante->referencia = $reference;
                 $variante->stockfis = $productData['stock'];
-                $variante->precio = $productData['price_with_tax'];
+                $variante->precio = $productData['price']; // Precio SIN IVA
                 $variante->coste = 0;
 
                 if (!$variante->save()) {
@@ -897,12 +982,12 @@ class ProductsDownload
                 // Verificar que se guardó correctamente
                 $varianteCheck = new Variante();
                 if ($varianteCheck->loadFromCode('', [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('referencia', $reference)])) {
-                    Tools::log()->info("Verificación BD - Stock: {$varianteCheck->stockfis}, Precio: {$varianteCheck->precio}, ID Producto: {$varianteCheck->idproducto}");
+                    Tools::log()->info("Verificación BD - Stock: {$varianteCheck->stockfis}, Precio (sin IVA): {$varianteCheck->precio}, ID Producto: {$varianteCheck->idproducto}");
                 } else {
                     Tools::log()->warning("ADVERTENCIA: No se pudo verificar variante recién creada para: {$reference}");
                 }
 
-                Tools::log()->info("✓ Producto creado: {$reference} | Stock: {$productData['stock']} | Precio: {$productData['price_with_tax']} | Bloqueado: " . ($producto->bloqueado ? 'SÍ' : 'NO'));
+                Tools::log()->info("✓ Producto creado: {$reference} | Stock: {$productData['stock']} | Precio (sin IVA): {$productData['price']} | Bloqueado: " . ($producto->bloqueado ? 'SÍ' : 'NO'));
             }
 
             return true;
