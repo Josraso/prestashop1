@@ -16,14 +16,9 @@
     <columna>
         <nombre>fecha_descarga</nombre>
         <tipo>timestamp</tipo>
-        <defecto>CURRENT_TIMESTAMP</defecto>
     </columna>
     <restriccion>
         <nombre>prestashop_products_temp_pkey</nombre>
         <consulta>PRIMARY KEY (id)</consulta>
-    </restriccion>
-    <restriccion>
-        <nombre>prestashop_products_temp_session_idx</nombre>
-        <consulta>CREATE INDEX ON prestashop_products_temp (session_id)</consulta>
     </restriccion>
 </tabla>
