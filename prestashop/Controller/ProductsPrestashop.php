@@ -49,49 +49,142 @@ class ProductsPrestashop extends Controller
         // Procesar acciones
         $action = $this->request->request->get('action', '');
         switch ($action) {
-            case 'download-products':
-                $this->downloadProductsAction();
+            case 'download-products-batch':
+                $this->downloadProductsBatchAction();
+                return; // No renderizar vista, solo devolver JSON
+
+            case 'get-total-products':
+                $this->getTotalProductsAction();
+                return; // No renderizar vista, solo devolver JSON
+
+            case 'show-products':
+                $this->showProductsAction();
+                break;
+
+            case 'clear-products':
+                $this->clearProductsAction();
                 break;
 
             case 'import-selected':
                 $this->importSelectedAction();
                 break;
         }
+
+        // Si hay productos en sesión, mostrarlos
+        $sessionProducts = $this->loadFromSession('prestashop_products', []);
+        if (!empty($sessionProducts)) {
+            $this->products = $sessionProducts;
+            $this->productsLoaded = true;
+            $this->totalProducts = count($sessionProducts);
+        }
     }
 
     /**
-     * Descarga todos los productos de PrestaShop
+     * Obtiene el total de productos (petición AJAX)
      */
-    private function downloadProductsAction(): void
+    private function getTotalProductsAction(): void
     {
         if (!$this->permissions->allowUpdate) {
-            Tools::log()->warning('No tienes permisos para descargar productos');
+            $this->returnJson(['error' => 'Sin permisos']);
             return;
         }
 
         if (!$this->config) {
-            Tools::log()->error('PrestaShop no está configurado');
+            $this->returnJson(['error' => 'PrestaShop no configurado']);
             return;
         }
 
         try {
-            Tools::log()->info('========================================');
-            Tools::log()->info('DESCARGANDO PRODUCTOS DE PRESTASHOP');
-            Tools::log()->info('========================================');
-
             $downloader = new ProductsDownload();
-            $this->products = $downloader->getAllProducts();
-            $this->totalProducts = count($this->products);
-            $this->productsLoaded = true;
+            $total = $downloader->getTotalProducts();
 
-            // Guardar productos en sesión para poder importarlos después
-            $this->saveToSession('prestashop_products', $this->products);
-
-            Tools::log()->info("Se descargaron {$this->totalProducts} productos (con combinaciones expandidas)");
+            $this->returnJson([
+                'success' => true,
+                'total' => $total
+            ]);
 
         } catch (\Exception $e) {
-            Tools::log()->error('Error descargando productos: ' . $e->getMessage());
+            $this->returnJson(['error' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * Descarga productos por lotes (petición AJAX)
+     */
+    private function downloadProductsBatchAction(): void
+    {
+        if (!$this->permissions->allowUpdate) {
+            $this->returnJson(['error' => 'Sin permisos']);
+            return;
+        }
+
+        if (!$this->config) {
+            $this->returnJson(['error' => 'PrestaShop no configurado']);
+            return;
+        }
+
+        try {
+            $offset = (int)$this->request->request->get('offset', 0);
+            $limit = (int)$this->request->request->get('limit', 20); // Lotes de 20 productos
+
+            Tools::log()->info("Descargando lote de productos: offset={$offset}, limit={$limit}");
+
+            $downloader = new ProductsDownload();
+            $result = $downloader->getAllProducts($offset, $limit);
+
+            // Obtener productos de sesión
+            $allProducts = $this->loadFromSession('prestashop_products', []);
+
+            // Agregar nuevos productos
+            $allProducts = array_merge($allProducts, $result['products']);
+
+            // Guardar en sesión
+            $this->saveToSession('prestashop_products', $allProducts);
+
+            $this->returnJson([
+                'success' => true,
+                'products' => $result['products'],
+                'total' => $result['total'],
+                'offset' => $offset,
+                'downloaded' => count($allProducts)
+            ]);
+
+        } catch (\Exception $e) {
+            Tools::log()->error('Error descargando lote: ' . $e->getMessage());
+            $this->returnJson(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Devuelve respuesta JSON y termina la ejecución
+     */
+    private function returnJson(array $data): void
+    {
+        header('Content-Type: application/json');
+        echo json_encode($data);
+        die();
+    }
+
+    /**
+     * Muestra productos de la sesión
+     */
+    private function showProductsAction(): void
+    {
+        $sessionProducts = $this->loadFromSession('prestashop_products', []);
+        $this->products = $sessionProducts;
+        $this->productsLoaded = true;
+        $this->totalProducts = count($sessionProducts);
+    }
+
+    /**
+     * Limpia productos de la sesión
+     */
+    private function clearProductsAction(): void
+    {
+        $this->saveToSession('prestashop_products', []);
+        $this->products = [];
+        $this->productsLoaded = false;
+        $this->totalProducts = 0;
     }
 
     /**

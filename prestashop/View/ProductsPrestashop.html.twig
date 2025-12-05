@@ -14,21 +14,42 @@
     <div class="row mb-3">
         <div class="col-12">
             {% if not fsc.productsLoaded %}
+                <button type="button" id="downloadProductsBtn" class="btn btn-primary">
+                    <i class="fas fa-download"></i> Descargar Productos de PrestaShop
+                </button>
+            {% else %}
                 <form method="post" class="d-inline">
-                    <input type="hidden" name="action" value="download-products"/>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-download"></i> Descargar Productos de PrestaShop
+                    <input type="hidden" name="action" value="clear-products"/>
+                    <button type="submit" class="btn btn-warning" onclick="return confirm('¿Limpiar productos descargados y empezar de nuevo?');">
+                        <i class="fas fa-trash"></i> Limpiar y Descargar de Nuevo
                     </button>
                 </form>
             {% endif %}
 
-            <a href="DashboardPrestashop" class="btn btn-outline-secondary {% if not fsc.productsLoaded %}ml-2{% endif %}">
+            <a href="DashboardPrestashop" class="btn btn-outline-secondary ml-2">
                 <i class="fas fa-arrow-left"></i> Volver al Dashboard
             </a>
 
             <a href="ConfigPrestashop" class="btn btn-outline-secondary ml-2">
                 <i class="fas fa-cog"></i> Configuración
             </a>
+        </div>
+    </div>
+
+    {# Barra de progreso para descarga #}
+    <div class="row mb-3" id="progressContainer" style="display: none;">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5><i class="fas fa-spinner fa-spin"></i> Descargando productos de PrestaShop...</h5>
+                    <div class="progress" style="height: 25px;">
+                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%">
+                            <span id="progressText">0%</span>
+                        </div>
+                    </div>
+                    <p class="mt-2 mb-0 text-muted" id="progressInfo">Iniciando descarga...</p>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -185,7 +206,7 @@
     {% endif %}
 </div>
 
-{# JavaScript para seleccionar/deseleccionar todos #}
+{# JavaScript para seleccionar/deseleccionar todos y descarga por lotes #}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const checkboxAll = document.getElementById('checkboxAll');
@@ -234,6 +255,107 @@
                 }
             });
         });
+
+        // ========== DESCARGA POR LOTES ==========
+        const downloadBtn = document.getElementById('downloadProductsBtn');
+        if (downloadBtn) {
+            downloadBtn.addEventListener('click', function() {
+                startBatchDownload();
+            });
+        }
+
+        function startBatchDownload() {
+            const progressContainer = document.getElementById('progressContainer');
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            const progressInfo = document.getElementById('progressInfo');
+
+            // Mostrar barra de progreso
+            progressContainer.style.display = 'block';
+            downloadBtn.disabled = true;
+
+            // Primero obtener el total de productos
+            fetch(window.location.href, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'action=get-total-products'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    progressContainer.style.display = 'none';
+                    downloadBtn.disabled = false;
+                    return;
+                }
+
+                const total = data.total;
+                const batchSize = 20; // Productos por lote
+                let offset = 0;
+
+                progressInfo.textContent = `Total de productos en PrestaShop: ${total}`;
+
+                // Descargar por lotes
+                downloadNextBatch(offset, total, batchSize);
+            })
+            .catch(error => {
+                alert('Error de conexión: ' + error);
+                progressContainer.style.display = 'none';
+                downloadBtn.disabled = false;
+            });
+        }
+
+        function downloadNextBatch(offset, total, batchSize) {
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            const progressInfo = document.getElementById('progressInfo');
+
+            if (offset >= total) {
+                // Descarga completa, recargar página
+                progressBar.style.width = '100%';
+                progressText.textContent = '100%';
+                progressInfo.textContent = 'Descarga completada. Recargando página...';
+
+                setTimeout(function() {
+                    window.location.reload();
+                }, 1000);
+                return;
+            }
+
+            // Calcular progreso
+            const progress = Math.min((offset / total) * 100, 100);
+            progressBar.style.width = progress + '%';
+            progressText.textContent = Math.round(progress) + '%';
+            progressInfo.textContent = `Descargados ${offset} de ${total} productos...`;
+
+            // Descargar lote
+            fetch(window.location.href, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `action=download-products-batch&offset=${offset}&limit=${batchSize}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error descargando lote: ' + data.error);
+                    progressContainer.style.display = 'none';
+                    downloadBtn.disabled = false;
+                    return;
+                }
+
+                // Continuar con el siguiente lote
+                downloadNextBatch(offset + batchSize, total, batchSize);
+            })
+            .catch(error => {
+                alert('Error de conexión: ' + error);
+                progressContainer.style.display = 'none';
+                downloadBtn.disabled = false;
+            });
+        }
     });
 </script>
 

@@ -28,33 +28,47 @@ class ProductsDownload
     /**
      * Obtiene TODOS los productos de PrestaShop con sus combinaciones expandidas
      *
-     * @return array Array de productos con combinaciones expandidas como productos independientes
+     * @param int $offset Desde qué producto empezar
+     * @param int $limit Cuántos productos obtener
+     * @return array Array con 'products' y 'total'
      */
-    public function getAllProducts(): array
+    public function getAllProducts(int $offset = 0, int $limit = 50): array
     {
         if (!$this->config) {
             Tools::log()->error('PrestaShop: Configuración no encontrada');
-            return [];
+            return ['products' => [], 'total' => 0];
         }
 
         if (!$this->connection->isConnected()) {
             Tools::log()->error('PrestaShop: No se pudo conectar con la tienda');
-            return [];
+            return ['products' => [], 'total' => 0];
         }
 
-        Tools::log()->info('[ProductsDownload] Obteniendo productos de PrestaShop...');
+        Tools::log()->info("[ProductsDownload] Obteniendo productos (offset: {$offset}, limit: {$limit})...");
 
         try {
             $webService = $this->connection->getWebService();
             $products = [];
 
-            // Obtener todos los productos (solo IDs)
-            $xmlString = $webService->get('products', null, null, ['display' => '[id]']);
+            // Obtener IDs de productos con paginación
+            $params = [
+                'display' => '[id]',
+                'limit' => "{$offset},{$limit}"
+            ];
+
+            $xmlString = $webService->get('products', null, null, $params);
             $xml = simplexml_load_string($xmlString);
 
             if (!isset($xml->products->product)) {
                 Tools::log()->warning('No se encontraron productos en PrestaShop');
-                return [];
+                return ['products' => [], 'total' => 0];
+            }
+
+            // Obtener total de productos (viene en el atributo)
+            $total = 0;
+            if (isset($xml->products)) {
+                // El total puede venir en diferentes atributos dependiendo de la versión
+                $total = (int)$xml->products->count();
             }
 
             $productIds = [];
@@ -62,7 +76,7 @@ class ProductsDownload
                 $productIds[] = (int)$product->id;
             }
 
-            Tools::log()->info('[ProductsDownload] Encontrados ' . count($productIds) . ' productos. Obteniendo detalles...');
+            Tools::log()->info('[ProductsDownload] Encontrados ' . count($productIds) . ' productos en este lote');
 
             // Obtener detalles completos de cada producto
             foreach ($productIds as $productId) {
@@ -79,12 +93,52 @@ class ProductsDownload
                 }
             }
 
-            Tools::log()->info('[ProductsDownload] Total de productos con combinaciones expandidas: ' . count($products));
-            return $products;
+            Tools::log()->info('[ProductsDownload] Total de productos con combinaciones expandidas en este lote: ' . count($products));
+
+            return [
+                'products' => $products,
+                'total' => $total,
+                'offset' => $offset,
+                'limit' => $limit
+            ];
 
         } catch (\Exception $e) {
             Tools::log()->error('Error obteniendo productos: ' . $e->getMessage());
-            return [];
+            return ['products' => [], 'total' => 0];
+        }
+    }
+
+    /**
+     * Obtiene el total de productos en PrestaShop
+     *
+     * @return int
+     */
+    public function getTotalProducts(): int
+    {
+        if (!$this->config || !$this->connection->isConnected()) {
+            return 0;
+        }
+
+        try {
+            $webService = $this->connection->getWebService();
+
+            $params = [
+                'display' => '[id]',
+                'limit' => 1
+            ];
+
+            $xmlString = $webService->get('products', null, null, $params);
+            $xml = simplexml_load_string($xmlString);
+
+            if (!isset($xml->products)) {
+                return 0;
+            }
+
+            return (int)$xml->products->count();
+
+        } catch (\Exception $e) {
+            Tools::log()->error('Error obteniendo total de productos: ' . $e->getMessage());
+            return 0;
         }
     }
 
