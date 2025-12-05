@@ -75,6 +75,9 @@ class ProductsPrestashop extends Controller
             $this->products = $_SESSION['prestashop_products'];
             $this->productsLoaded = true;
             $this->totalProducts = count($_SESSION['prestashop_products']);
+            Tools::log()->info("Cargados " . $this->totalProducts . " productos de la sesión para mostrar");
+        } else {
+            Tools::log()->info("No hay productos en sesión para mostrar");
         }
     }
 
@@ -124,7 +127,7 @@ class ProductsPrestashop extends Controller
 
         try {
             $offset = (int)$this->request->request->get('offset', 0);
-            $limit = (int)$this->request->request->get('limit', 20); // Lotes de 20 productos
+            $limit = (int)$this->request->request->get('limit', 10); // Lotes de 10 productos
 
             Tools::log()->info("Descargando lote de productos: offset={$offset}, limit={$limit}");
 
@@ -140,11 +143,14 @@ class ProductsPrestashop extends Controller
             // Guardar en sesión
             $_SESSION['prestashop_products'] = $allProducts;
 
+            Tools::log()->info("Sesión actualizada: " . count($allProducts) . " productos totales guardados");
+
             $this->returnJson([
                 'success' => true,
                 'products' => $result['products'],
                 'offset' => $offset,
-                'downloaded' => count($allProducts)
+                'downloaded' => count($allProducts),
+                'in_batch' => count($result['products'])
             ]);
 
         } catch (\Exception $e) {

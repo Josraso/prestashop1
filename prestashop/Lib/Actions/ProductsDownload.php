@@ -217,7 +217,7 @@ class ProductsDownload
     }
 
     /**
-     * Obtiene las combinaciones de un producto
+     * Obtiene las combinaciones de un producto (simplificado y rápido)
      *
      * @param int $productId
      * @return array
@@ -229,7 +229,7 @@ class ProductsDownload
 
             $params = [
                 'filter[id_product]' => $productId,
-                'display' => 'full'
+                'display' => '[id,reference,price,quantity]'  // Solo campos necesarios
             ];
 
             $xmlString = $webService->get('combinations', null, null, $params);
@@ -252,15 +252,14 @@ class ProductsDownload
                 // Stock de esta combinación
                 $quantity = (int)$combo->quantity;
 
-                // Obtener los valores de atributos (ej: "Talla: M", "Color: Rojo")
-                $attributes = $this->getCombinationAttributeValues($comboId);
-
+                // NO obtener atributos aquí - demasiado lento
+                // Usamos solo el ID de combinación como identificador
                 $combinations[] = [
                     'id' => $comboId,
                     'reference' => $reference,
                     'price_impact' => $priceImpact,
                     'quantity' => $quantity,
-                    'attributes' => $attributes
+                    'attributes' => [] // Vacío para acelerar
                 ];
             }
 
@@ -391,10 +390,14 @@ class ProductsDownload
                 // Calcular precio final con IVA (precio base + impacto de combinación) * 1.21
                 $priceWithTax = ($productDetails['price'] + $combo['price_impact']) * 1.21;
 
-                // Concatenar nombre con atributos: "Producto - Attr1 - Attr2"
+                // Usar el nombre base + ID de combinación (sin obtener atributos para acelerar)
                 $fullName = $productDetails['name'];
-                if (!empty($combo['attributes'])) {
-                    $fullName .= ' - ' . implode(' - ', $combo['attributes']);
+                if ($combo['reference']) {
+                    // Si tiene referencia propia, agregamos esa info
+                    $fullName .= ' [' . $combo['reference'] . ']';
+                } else {
+                    // Si no, agregamos el ID de combinación
+                    $fullName .= ' [Comb. ' . $combo['id'] . ']';
                 }
 
                 // Usar referencia de la combinación, o generar una si está vacía
