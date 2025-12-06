@@ -874,6 +874,7 @@ class ProductsDownload
                 $producto->referencia = $reference; // ← REFERENCIA EN EL PRODUCTO
                 $producto->descripcion = $productData['name'];
                 $producto->precio = $productData['price']; // Precio SIN IVA
+                $producto->stockfis = $productData['stock']; // Stock en el producto
                 $producto->nostock = false;
                 $producto->ventasinstock = false;
                 $producto->bloqueado = !$productData['active'];
@@ -890,15 +891,15 @@ class ProductsDownload
                     Tools::log()->info("Intentando descargar imagen para: {$reference}");
                     $imageData = $this->downloadImage($productData['image_url'], $reference);
                     if ($imageData) {
-                        // Asignar filename al campo imagen del Producto (para pestaña "Imágenes")
-                        $producto->imagen = $imageData['filename'];
+                        // Asignar ruta relativa al campo imagen del Producto
+                        $producto->imagen = 'Product/' . $imageData['filename'];
                         if (!$producto->save()) {
                             Tools::log()->warning("No se pudo actualizar campo imagen del producto");
                         }
 
                         // Vincular imagen al producto mediante attached_files_rel (para pestaña "Archivos")
                         $this->linkFileToProduct($imageData['idfile'], $producto->idproducto, $reference);
-                        Tools::log()->info("Imagen asignada: {$imageData['filename']} (idfile={$imageData['idfile']})");
+                        Tools::log()->info("Imagen asignada: Product/{$imageData['filename']} (idfile={$imageData['idfile']})");
                     } else {
                         Tools::log()->warning("No se pudo descargar imagen para: {$reference}");
                     }
@@ -940,12 +941,28 @@ class ProductsDownload
                 $producto->referencia = $reference; // ← REFERENCIA EN EL PRODUCTO
                 $producto->descripcion = $productData['name'];
                 $producto->precio = $productData['price']; // Precio SIN IVA
+                $producto->stockfis = $productData['stock']; // Stock en el producto
                 $producto->nostock = false;
                 $producto->ventasinstock = false;
                 $producto->bloqueado = !$productData['active'];
                 $producto->codimpuesto = 'IVA21';
 
-                // Guardar producto (esto crea automáticamente una variante)
+                // Descargar imagen ANTES de guardar el producto
+                if (!empty($productData['image_url'])) {
+                    Tools::log()->info("Intentando descargar imagen para nuevo producto: {$reference}");
+                    $imageData = $this->downloadImage($productData['image_url'], $reference);
+                    if ($imageData) {
+                        // Asignar ruta relativa al campo imagen del Producto
+                        $producto->imagen = 'Product/' . $imageData['filename'];
+                        Tools::log()->info("Imagen preparada: Product/{$imageData['filename']}");
+                    } else {
+                        Tools::log()->warning("No se pudo descargar imagen para nuevo producto: {$reference}");
+                    }
+                } else {
+                    Tools::log()->info("No hay URL de imagen para nuevo producto: {$reference}");
+                }
+
+                // Guardar producto UNA SOLA VEZ (esto crea automáticamente una variante)
                 if (!$producto->save()) {
                     Tools::log()->error("Error creando producto: {$reference}");
                     return false;
@@ -953,25 +970,10 @@ class ProductsDownload
 
                 Tools::log()->info("Nuevo producto guardado: {$reference}");
 
-                // Descargar y vincular imagen mediante attached_files
-                if (!empty($productData['image_url'])) {
-                    Tools::log()->info("Intentando descargar imagen para nuevo producto: {$reference}");
-                    $imageData = $this->downloadImage($productData['image_url'], $reference);
-                    if ($imageData) {
-                        // Asignar filename al campo imagen del Producto (para pestaña "Imágenes")
-                        $producto->imagen = $imageData['filename'];
-                        if (!$producto->save()) {
-                            Tools::log()->warning("No se pudo actualizar campo imagen del producto");
-                        }
-
-                        // Vincular imagen al producto mediante attached_files_rel (para pestaña "Archivos")
-                        $this->linkFileToProduct($imageData['idfile'], $producto->idproducto, $reference);
-                        Tools::log()->info("Imagen asignada: {$imageData['filename']} (idfile={$imageData['idfile']})");
-                    } else {
-                        Tools::log()->warning("No se pudo descargar imagen para nuevo producto: {$reference}");
-                    }
-                } else {
-                    Tools::log()->info("No hay URL de imagen para nuevo producto: {$reference}");
+                // Vincular imagen mediante attached_files_rel DESPUÉS de tener idproducto
+                if (!empty($imageData)) {
+                    $this->linkFileToProduct($imageData['idfile'], $producto->idproducto, $reference);
+                    Tools::log()->info("Imagen vinculada mediante attached_files_rel (idfile={$imageData['idfile']})");
                 }
 
                 // Obtener la variante auto-creada y asignarle la referencia y stock
