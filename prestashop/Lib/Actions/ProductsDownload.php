@@ -628,9 +628,9 @@ class ProductsDownload
      *
      * @param string $imageUrl
      * @param string $reference Referencia del producto (para nombrar el archivo)
-     * @return int|null ID del archivo en attached_files, o null si falla
+     * @return array|null Array con ['idfile' => int, 'filename' => string] o null si falla
      */
-    public function downloadImage(string $imageUrl, string $reference): ?int
+    public function downloadImage(string $imageUrl, string $reference): ?array
     {
         if (empty($imageUrl)) {
             Tools::log()->warning("URL de imagen vacía para referencia: {$reference}");
@@ -780,7 +780,10 @@ class ProductsDownload
 
             Tools::log()->info("✓ Registro creado en attached_files: idfile={$idfile}, filename={$filename}");
 
-            return $idfile;
+            return [
+                'idfile' => $idfile,
+                'filename' => $filename
+            ];
 
         } catch (\Exception $e) {
             Tools::log()->error("Excepción descargando imagen para {$reference}: " . $e->getMessage());
@@ -885,11 +888,17 @@ class ProductsDownload
                 // Descargar y vincular imagen mediante attached_files
                 if (!empty($productData['image_url'])) {
                     Tools::log()->info("Intentando descargar imagen para: {$reference}");
-                    $idfile = $this->downloadImage($productData['image_url'], $reference);
-                    if ($idfile) {
-                        // Vincular imagen al producto mediante attached_files_rel
-                        $this->linkFileToProduct($idfile, $producto->idproducto, $reference);
-                        Tools::log()->info("Imagen vinculada al producto mediante attached_files_rel");
+                    $imageData = $this->downloadImage($productData['image_url'], $reference);
+                    if ($imageData) {
+                        // Asignar filename al campo imagen del Producto (para pestaña "Imágenes")
+                        $producto->imagen = $imageData['filename'];
+                        if (!$producto->save()) {
+                            Tools::log()->warning("No se pudo actualizar campo imagen del producto");
+                        }
+
+                        // Vincular imagen al producto mediante attached_files_rel (para pestaña "Archivos")
+                        $this->linkFileToProduct($imageData['idfile'], $producto->idproducto, $reference);
+                        Tools::log()->info("Imagen asignada: {$imageData['filename']} (idfile={$imageData['idfile']})");
                     } else {
                         Tools::log()->warning("No se pudo descargar imagen para: {$reference}");
                     }
@@ -947,11 +956,17 @@ class ProductsDownload
                 // Descargar y vincular imagen mediante attached_files
                 if (!empty($productData['image_url'])) {
                     Tools::log()->info("Intentando descargar imagen para nuevo producto: {$reference}");
-                    $idfile = $this->downloadImage($productData['image_url'], $reference);
-                    if ($idfile) {
-                        // Vincular imagen al producto mediante attached_files_rel
-                        $this->linkFileToProduct($idfile, $producto->idproducto, $reference);
-                        Tools::log()->info("Imagen vinculada al producto mediante attached_files_rel");
+                    $imageData = $this->downloadImage($productData['image_url'], $reference);
+                    if ($imageData) {
+                        // Asignar filename al campo imagen del Producto (para pestaña "Imágenes")
+                        $producto->imagen = $imageData['filename'];
+                        if (!$producto->save()) {
+                            Tools::log()->warning("No se pudo actualizar campo imagen del producto");
+                        }
+
+                        // Vincular imagen al producto mediante attached_files_rel (para pestaña "Archivos")
+                        $this->linkFileToProduct($imageData['idfile'], $producto->idproducto, $reference);
+                        Tools::log()->info("Imagen asignada: {$imageData['filename']} (idfile={$imageData['idfile']})");
                     } else {
                         Tools::log()->warning("No se pudo descargar imagen para nuevo producto: {$reference}");
                     }
