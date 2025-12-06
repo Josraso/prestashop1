@@ -947,6 +947,18 @@ class ProductsDownload
                     return false;
                 }
 
+                // Descargar imagen PRIMERO (antes de modificar producto)
+                $imageData = null;
+                if (!empty($productData['image_url'])) {
+                    Tools::log()->info("Descargando imagen para actualizar: {$reference}");
+                    $imageData = $this->downloadImage($productData['image_url'], $reference);
+                    if ($imageData) {
+                        Tools::log()->info("Imagen descargada: {$imageData['filename']} (idfile={$imageData['idfile']})");
+                    } else {
+                        Tools::log()->warning("No se pudo descargar imagen");
+                    }
+                }
+
                 // Actualizar datos del producto
                 $producto->referencia = $reference;
                 $producto->descripcion = $productData['name'];
@@ -957,19 +969,10 @@ class ProductsDownload
                 $producto->bloqueado = !$productData['active'];
                 $producto->codimpuesto = 'IVA21';
 
-                // Descargar imagen ANTES de guardar
-                if (!empty($productData['image_url'])) {
-                    Tools::log()->info("Intentando descargar imagen para: {$reference}");
-                    $imageData = $this->downloadImage($productData['image_url'], $reference);
-                    if ($imageData) {
-                        // Asignar solo el filename (FacturaScripts busca en MyFiles/Product/)
-                        $producto->imagen = $imageData['filename'];
-                        Tools::log()->info("Imagen preparada: {$imageData['filename']}");
-                    } else {
-                        Tools::log()->warning("No se pudo descargar imagen para: {$reference}");
-                    }
-                } else {
-                    Tools::log()->info("No hay URL de imagen para: {$reference}");
+                // Asignar imagen al producto (ruta completa desde MyFiles)
+                if ($imageData) {
+                    $producto->imagen = 'MyFiles/Product/' . $imageData['filename'];
+                    Tools::log()->info("Imagen asignada al producto: MyFiles/Product/{$imageData['filename']}");
                 }
 
                 // Guardar producto UNA SOLA VEZ
@@ -978,12 +981,12 @@ class ProductsDownload
                     return false;
                 }
 
-                Tools::log()->info("Producto guardado: {$reference}");
+                Tools::log()->info("Producto guardado con ID: {$producto->idproducto}");
 
                 // Vincular imagen mediante attached_files_rel DESPUÉS de guardar
-                if (!empty($imageData)) {
+                if ($imageData) {
                     $this->linkFileToProduct($imageData['idfile'], $producto->idproducto, $reference);
-                    Tools::log()->info("Imagen vinculada mediante attached_files_rel (idfile={$imageData['idfile']})");
+                    Tools::log()->info("Imagen vinculada via attached_files_rel (idfile={$imageData['idfile']})");
                 }
 
                 // Recargar la variante para asegurar datos frescos
