@@ -845,6 +845,83 @@ class ProductsDownload
     }
 
     /**
+     * Actualiza el stock de una variante en el almacén
+     * Registra el movimiento en variantstock
+     *
+     * @param int $idvariante ID de la variante
+     * @param int $cantidad Cantidad de stock
+     * @param string $referencia Referencia (para logs)
+     * @return bool
+     */
+    private function actualizarStockVariante(int $idvariante, int $cantidad, string $referencia): bool
+    {
+        try {
+            $db = new \FacturaScripts\Core\Base\DataBase();
+
+            // Obtener almacén por defecto de la configuración
+            $codalmacen = $this->config->codalmacen ?? null;
+
+            if (empty($codalmacen)) {
+                // Si no hay almacén configurado, buscar el primero disponible
+                $sqlAlmacen = "SELECT codalmacen FROM almacenes ORDER BY codalmacen LIMIT 1";
+                $almacenes = $db->select($sqlAlmacen);
+
+                if (!empty($almacenes)) {
+                    $codalmacen = $almacenes[0]['codalmacen'];
+                    Tools::log()->warning("No hay almacén configurado, usando: {$codalmacen}");
+                } else {
+                    Tools::log()->error("No hay almacenes disponibles en el sistema");
+                    return false;
+                }
+            }
+
+            Tools::log()->info("Actualizando stock de variante {$idvariante} en almacén {$codalmacen}: {$cantidad} unidades");
+
+            // Verificar si ya existe registro de stock para esta variante en este almacén
+            $sqlCheck = "SELECT cantidad FROM stocks
+                         WHERE referencia = " . $db->var2str($referencia) . "
+                         AND codalmacen = " . $db->var2str($codalmacen);
+            $existing = $db->select($sqlCheck);
+
+            if (!empty($existing)) {
+                // Actualizar stock existente
+                $sqlUpdate = "UPDATE stocks
+                              SET cantidad = " . $db->var2str($cantidad) . ",
+                                  disponible = " . $db->var2str($cantidad) . ",
+                                  reservada = 0,
+                                  pterecibir = 0
+                              WHERE referencia = " . $db->var2str($referencia) . "
+                              AND codalmacen = " . $db->var2str($codalmacen);
+
+                if (!$db->exec($sqlUpdate)) {
+                    Tools::log()->error("Error actualizando stocks: " . $db->lastError());
+                    return false;
+                }
+
+                Tools::log()->info("✓ Stock actualizado en tabla stocks: {$referencia} → {$cantidad} unidades");
+            } else {
+                // Crear nuevo registro de stock
+                $sqlInsert = "INSERT INTO stocks (referencia, codalmacen, cantidad, disponible, reservada, pterecibir)
+                              VALUES (" . $db->var2str($referencia) . ", " . $db->var2str($codalmacen) . ", " .
+                              $db->var2str($cantidad) . ", " . $db->var2str($cantidad) . ", 0, 0)";
+
+                if (!$db->exec($sqlInsert)) {
+                    Tools::log()->error("Error insertando en stocks: " . $db->lastError());
+                    return false;
+                }
+
+                Tools::log()->info("✓ Stock creado en tabla stocks: {$referencia} → {$cantidad} unidades en almacén {$codalmacen}");
+            }
+
+            return true;
+
+        } catch (\Exception $e) {
+            Tools::log()->error("Error actualizando stock de variante: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Importa un producto a FacturaScripts (crea o actualiza)
      *
      * @param array $productData Datos del producto
@@ -923,6 +1000,11 @@ class ProductsDownload
                 if (!$variante->save()) {
                     Tools::log()->error("Error actualizando stock de variante: {$reference}");
                     return false;
+                }
+
+                // REGISTRAR MOVIMIENTO DE STOCK en tabla stocks
+                if (!$this->actualizarStockVariante($variante->idvariante, $productData['stock'], $reference)) {
+                    Tools::log()->warning("No se pudo actualizar stock en almacén para: {$reference}");
                 }
 
                 // Verificar que se guardó correctamente
