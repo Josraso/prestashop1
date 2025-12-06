@@ -871,7 +871,7 @@ class ProductsDownload
                 }
 
                 // Actualizar datos del producto
-                $producto->referencia = $reference; // ← REFERENCIA EN EL PRODUCTO
+                $producto->referencia = $reference;
                 $producto->descripcion = $productData['name'];
                 $producto->precio = $productData['price']; // Precio SIN IVA
                 $producto->stockfis = $productData['stock']; // Stock en el producto
@@ -880,26 +880,14 @@ class ProductsDownload
                 $producto->bloqueado = !$productData['active'];
                 $producto->codimpuesto = 'IVA21';
 
-                // Guardar producto
-                if (!$producto->save()) {
-                    Tools::log()->error("Error actualizando producto: {$reference}");
-                    return false;
-                }
-
-                // Descargar y vincular imagen mediante attached_files
+                // Descargar imagen ANTES de guardar
                 if (!empty($productData['image_url'])) {
                     Tools::log()->info("Intentando descargar imagen para: {$reference}");
                     $imageData = $this->downloadImage($productData['image_url'], $reference);
                     if ($imageData) {
-                        // Asignar ruta relativa al campo imagen del Producto
-                        $producto->imagen = 'Product/' . $imageData['filename'];
-                        if (!$producto->save()) {
-                            Tools::log()->warning("No se pudo actualizar campo imagen del producto");
-                        }
-
-                        // Vincular imagen al producto mediante attached_files_rel (para pestaña "Archivos")
-                        $this->linkFileToProduct($imageData['idfile'], $producto->idproducto, $reference);
-                        Tools::log()->info("Imagen asignada: Product/{$imageData['filename']} (idfile={$imageData['idfile']})");
+                        // Asignar solo el filename (FacturaScripts busca en MyFiles/Product/)
+                        $producto->imagen = $imageData['filename'];
+                        Tools::log()->info("Imagen preparada: {$imageData['filename']}");
                     } else {
                         Tools::log()->warning("No se pudo descargar imagen para: {$reference}");
                     }
@@ -907,7 +895,19 @@ class ProductsDownload
                     Tools::log()->info("No hay URL de imagen para: {$reference}");
                 }
 
+                // Guardar producto UNA SOLA VEZ
+                if (!$producto->save()) {
+                    Tools::log()->error("Error actualizando producto: {$reference}");
+                    return false;
+                }
+
                 Tools::log()->info("Producto guardado: {$reference}");
+
+                // Vincular imagen mediante attached_files_rel DESPUÉS de guardar
+                if (!empty($imageData)) {
+                    $this->linkFileToProduct($imageData['idfile'], $producto->idproducto, $reference);
+                    Tools::log()->info("Imagen vinculada mediante attached_files_rel (idfile={$imageData['idfile']})");
+                }
 
                 // Recargar la variante para asegurar datos frescos
                 if (!$variante->loadFromCode('', [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('referencia', $reference)])) {
@@ -918,7 +918,7 @@ class ProductsDownload
                 // Actualizar stock y precio en la variante
                 $variante->stockfis = $productData['stock'];
                 $variante->precio = $productData['price']; // Precio SIN IVA
-                $variante->coste = 0; // Resetear coste si es necesario
+                $variante->coste = 0;
 
                 if (!$variante->save()) {
                     Tools::log()->error("Error actualizando stock de variante: {$reference}");
@@ -952,9 +952,9 @@ class ProductsDownload
                     Tools::log()->info("Intentando descargar imagen para nuevo producto: {$reference}");
                     $imageData = $this->downloadImage($productData['image_url'], $reference);
                     if ($imageData) {
-                        // Asignar ruta relativa al campo imagen del Producto
-                        $producto->imagen = 'Product/' . $imageData['filename'];
-                        Tools::log()->info("Imagen preparada: Product/{$imageData['filename']}");
+                        // Asignar solo el filename (FacturaScripts busca en MyFiles/Product/)
+                        $producto->imagen = $imageData['filename'];
+                        Tools::log()->info("Imagen preparada: {$imageData['filename']}");
                     } else {
                         Tools::log()->warning("No se pudo descargar imagen para nuevo producto: {$reference}");
                     }
