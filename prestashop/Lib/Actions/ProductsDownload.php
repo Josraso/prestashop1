@@ -937,7 +937,7 @@ class ProductsDownload
                 // CREAR NUEVO PRODUCTO
                 Tools::log()->info("Creando nuevo producto: {$reference}");
 
-                // Descargar imagen PRIMERO (antes de crear producto)
+                // Descargar imagen PRIMERO
                 $imageData = null;
                 if (!empty($productData['image_url'])) {
                     Tools::log()->info("Descargando imagen para nuevo producto: {$reference}");
@@ -947,32 +947,45 @@ class ProductsDownload
                     }
                 }
 
+                // CREAR PRODUCTO (como mostraban los pantallazos: referencia + descripción)
                 $producto = new Producto();
+                $producto->referencia = $reference; // ← REFERENCIA EN PRODUCTO
                 $producto->descripcion = $productData['name'];
                 $producto->precio = $productData['price']; // Precio SIN IVA
+                $producto->stockfis = $productData['stock']; // Stock en producto
                 $producto->nostock = false;
                 $producto->ventasinstock = false;
                 $producto->bloqueado = !$productData['active'];
                 $producto->codimpuesto = 'IVA21';
 
-                // Guardar producto UNA SOLA VEZ (esto crea automáticamente una variante)
+                // Asignar imagen ANTES de guardar (solo filename)
+                if ($imageData) {
+                    $producto->imagen = $imageData['filename'];
+                }
+
+                // Guardar producto UNA SOLA VEZ (esto crea automáticamente una variante que hereda la referencia)
                 if (!$producto->save()) {
                     Tools::log()->error("Error creando producto: {$reference}");
                     return false;
                 }
 
-                Tools::log()->info("Producto creado con ID: {$producto->idproducto}");
+                Tools::log()->info("Producto creado con ID: {$producto->idproducto}, Ref: {$producto->referencia}");
 
-                // Obtener la variante auto-creada
+                // Vincular imagen mediante attached_files_rel
+                if ($imageData) {
+                    $this->linkFileToProduct($imageData['idfile'], $producto->idproducto, $reference);
+                    Tools::log()->info("Imagen vinculada: {$imageData['filename']} (idfile={$imageData['idfile']})");
+                }
+
+                // Obtener la variante auto-creada (ya tiene la referencia heredada del producto)
                 $variantes = $producto->getVariants();
                 if (empty($variantes)) {
                     Tools::log()->error("No se creó variante automática para: {$reference}");
                     return false;
                 }
 
-                // Asignar referencia, precio y stock a la variante
+                // Asignar stock y precio a la variante
                 $variante = $variantes[0];
-                $variante->referencia = $reference;
                 $variante->stockfis = $productData['stock'];
                 $variante->precio = $productData['price']; // Precio SIN IVA
                 $variante->coste = 0;
@@ -982,21 +995,7 @@ class ProductsDownload
                     return false;
                 }
 
-                Tools::log()->info("Variante creada - ID: {$variante->idvariante}, Ref: {$variante->referencia}, Stock: {$variante->stockfis}");
-
-                // Vincular imagen al producto (si se descargó)
-                if ($imageData) {
-                    // Asignar imagen al producto
-                    $producto->imagen = $imageData['filename'];
-                    if (!$producto->save()) {
-                        Tools::log()->warning("No se pudo asignar imagen al producto");
-                    } else {
-                        Tools::log()->info("Imagen asignada al producto: {$imageData['filename']}");
-                    }
-
-                    // Vincular también mediante attached_files_rel
-                    $this->linkFileToProduct($imageData['idfile'], $producto->idproducto, $reference);
-                }
+                Tools::log()->info("Variante guardada - ID: {$variante->idvariante}, Ref: {$variante->referencia}, Stock: {$variante->stockfis}");
 
                 Tools::log()->info("Variante guardada. ID: {$variante->idvariante}, Ref: {$variante->referencia}");
 
