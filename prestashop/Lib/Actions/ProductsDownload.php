@@ -779,7 +779,7 @@ class ProductsDownload
                     $db->var2str($mimeType) . ", " . $db->var2str($savedSize) . ")";
 
             if (!$db->exec($sql)) {
-                Tools::log()->error("Error insertando en attached_files: " . $db->lastError());
+                Tools::log()->error("Error insertando en attached_files");
                 return null;
             }
 
@@ -830,7 +830,7 @@ class ProductsDownload
                               WHERE model = 'Producto' AND modelid = " . $db->var2str($idproducto);
 
                 if (!$db->exec($sqlUpdate)) {
-                    Tools::log()->error("Error actualizando attached_files_rel: " . $db->lastError());
+                    Tools::log()->error("Error actualizando attached_files_rel");
                     return false;
                 }
 
@@ -842,7 +842,7 @@ class ProductsDownload
                               $db->var2str($idproducto) . ", " . $db->var2str($referencia) . ", NOW())";
 
                 if (!$db->exec($sqlInsert)) {
-                    Tools::log()->error("Error insertando en attached_files_rel: " . $db->lastError());
+                    Tools::log()->error("Error insertando en attached_files_rel");
                     return false;
                 }
 
@@ -906,7 +906,7 @@ class ProductsDownload
                               AND codalmacen = " . $db->var2str($codalmacen);
 
                 if (!$db->exec($sqlUpdate)) {
-                    Tools::log()->error("Error actualizando stocks: " . $db->lastError());
+                    Tools::log()->error("Error actualizando stocks");
                     return false;
                 }
 
@@ -918,7 +918,7 @@ class ProductsDownload
                               $db->var2str($cantidad) . ", " . $db->var2str($cantidad) . ", 0, 0)";
 
                 if (!$db->exec($sqlInsert)) {
-                    Tools::log()->error("Error insertando en stocks: " . $db->lastError());
+                    Tools::log()->error("Error insertando en stocks");
                     return false;
                 }
 
