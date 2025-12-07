@@ -1,0 +1,424 @@
+{% extends "Master/MenuTemplate.html.twig" %}
+
+{% block body %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="h3 mb-3">
+                <i class="fas fa-box-open"></i> Productos PrestaShop
+            </h1>
+        </div>
+    </div>
+
+    {# Botones de acción #}
+    <div class="row mb-3">
+        <div class="col-12">
+            {% if not fsc.productsLoaded %}
+                <button type="button" id="downloadProductsBtn" class="btn btn-primary">
+                    <i class="fas fa-download"></i> Descargar Productos de PrestaShop
+                </button>
+            {% else %}
+                <form method="post" class="d-inline">
+                    <input type="hidden" name="action" value="clear-products"/>
+                    <button type="submit" class="btn btn-warning" onclick="return confirm('¿Limpiar productos descargados y empezar de nuevo?');">
+                        <i class="fas fa-trash"></i> Limpiar y Descargar de Nuevo
+                    </button>
+                </form>
+            {% endif %}
+
+            <a href="DashboardPrestashop" class="btn btn-outline-secondary ml-2">
+                <i class="fas fa-arrow-left"></i> Volver al Dashboard
+            </a>
+
+            <a href="ConfigPrestashop" class="btn btn-outline-secondary ml-2">
+                <i class="fas fa-cog"></i> Configuración
+            </a>
+        </div>
+    </div>
+
+    {# Barra de progreso para descarga #}
+    <div class="row mb-3" id="progressContainer" style="display: none;">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5><i class="fas fa-spinner fa-spin"></i> Descargando productos de PrestaShop...</h5>
+                    <div class="progress" style="height: 25px;">
+                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%">
+                            <span id="progressText">0%</span>
+                        </div>
+                    </div>
+                    <p class="mt-2 mb-0 text-muted" id="progressInfo">Iniciando descarga...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Mostrar resultados de importación #}
+    {% if fsc.importedCount > 0 or fsc.errorCount > 0 %}
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="alert alert-info">
+                <strong><i class="fas fa-info-circle"></i> Resultado de la importación:</strong><br>
+                <i class="fas fa-check-circle text-success"></i> Productos importados: <strong>{{ fsc.importedCount }}</strong><br>
+                {% if fsc.errorCount > 0 %}
+                <i class="fas fa-times-circle text-danger"></i> Errores: <strong>{{ fsc.errorCount }}</strong>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {# Tabla de productos #}
+    {% if fsc.productsLoaded and fsc.totalProducts > 0 %}
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-list"></i> Productos Descargados ({{ fsc.totalProducts }})
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <form method="post" id="importForm">
+                        <input type="hidden" name="action" value="import-selected"/>
+
+                        {# Botones de acción #}
+                        <div class="mb-3 d-flex justify-content-between align-items-center">
+                            <div>
+                                <button type="button" id="selectAll" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-check-square"></i> Seleccionar Todos
+                                </button>
+                                <button type="button" id="deselectAll" class="btn btn-sm btn-outline-secondary ml-2">
+                                    <i class="fas fa-square"></i> Deseleccionar Todos
+                                </button>
+                            </div>
+                            <div>
+                                <button type="submit" class="btn btn-success" onclick="return confirm('¿Importar productos seleccionados?');">
+                                    <i class="fas fa-upload"></i> Importar Seleccionados
+                                </button>
+                            </div>
+                        </div>
+
+                        {# Tabla de productos #}
+                        <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                            <table class="table table-hover table-sm">
+                                <thead class="thead-light" style="position: sticky; top: 0; z-index: 10;">
+                                    <tr>
+                                        <th style="width: 50px;">
+                                            <input type="checkbox" id="checkboxAll" title="Seleccionar todos">
+                                        </th>
+                                        <th style="width: 100px;">Imagen</th>
+                                        <th style="width: 150px;">Referencia</th>
+                                        <th>Nombre</th>
+                                        <th style="width: 120px;" class="text-right">Precio (sin IVA)</th>
+                                        <th style="width: 100px;" class="text-center">Stock</th>
+                                        <th style="width: 80px;" class="text-center">Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for index, product in fsc.products %}
+                                    <tr class="{% if product.exists %}product-exists{% endif %} {% if not product.active %}text-muted{% endif %}">
+                                        <td>
+                                            <input type="checkbox"
+                                                   name="selected_products[]"
+                                                   value="{{ index }}"
+                                                   class="product-checkbox"
+                                                   {% if product.reference is empty %}disabled title="Sin referencia"{% endif %}>
+                                        </td>
+                                        <td>
+                                            {% if product.image_url %}
+                                                <img src="{{ product.image_url }}"
+                                                     alt="{{ product.name }}"
+                                                     class="img-thumbnail"
+                                                     style="max-width: 80px; max-height: 80px; object-fit: contain;"
+                                                     onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'80\' height=\'80\'%3E%3Crect fill=\'%23eee\' width=\'80\' height=\'80\'/%3E%3Ctext fill=\'%23999\' x=\'50%25\' y=\'50%25\' dominant-baseline=\'middle\' text-anchor=\'middle\' font-size=\'12\'%3ESin imagen%3C/text%3E%3C/svg%3E'">
+                                            {% else %}
+                                                <div class="bg-light d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
+                                                    <small class="text-muted">Sin imagen</small>
+                                                </div>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <code class="{% if product.reference is empty %}text-danger{% endif %}">
+                                                {{ product.reference|default('SIN REF') }}
+                                            </code>
+                                            {% if product.has_combination %}
+                                                <br><small class="badge badge-info">Combinación</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {{ product.name }}
+                                            {% if product.exists %}
+                                                <br><small class="text-success"><i class="fas fa-check-circle"></i> Ya existe en FacturaScripts (se actualizará)</small>
+                                            {% endif %}
+                                            {% if not product.active %}
+                                                <br><small class="text-warning"><i class="fas fa-exclamation-triangle"></i> Inactivo en PrestaShop</small>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-right">
+                                            <strong>{{ product.price|number_format(2, ',', '.') }} €</strong>
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge {% if product.stock > 0 %}badge-success{% else %}badge-secondary{% endif %}">
+                                                {{ product.stock }}
+                                            </span>
+                                        </td>
+                                        <td class="text-center">
+                                            {% if product.active %}
+                                                <i class="fas fa-check-circle text-success" title="Activo"></i>
+                                            {% else %}
+                                                <i class="fas fa-ban text-muted" title="Inactivo"></i>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {# Información adicional #}
+                        <div class="mt-3 text-muted small">
+                            <i class="fas fa-info-circle"></i>
+                            Los productos con combinaciones se muestran expandidos como productos independientes.
+                            Los productos sin referencia no pueden ser importados.
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% elseif fsc.productsLoaded and fsc.totalProducts == 0 %}
+    <div class="row">
+        <div class="col-12">
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle"></i> No se encontraron productos en PrestaShop.
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="row">
+        <div class="col-12">
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i> Haz clic en "Descargar Productos de PrestaShop" para comenzar.
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{# JavaScript para seleccionar/deseleccionar todos y descarga por lotes #}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const checkboxAll = document.getElementById('checkboxAll');
+        const productCheckboxes = document.querySelectorAll('.product-checkbox:not(:disabled)');
+        const selectAllBtn = document.getElementById('selectAll');
+        const deselectAllBtn = document.getElementById('deselectAll');
+
+        // Checkbox principal
+        if (checkboxAll) {
+            checkboxAll.addEventListener('change', function() {
+                productCheckboxes.forEach(function(checkbox) {
+                    checkbox.checked = checkboxAll.checked;
+                });
+            });
+        }
+
+        // Botón seleccionar todos
+        if (selectAllBtn) {
+            selectAllBtn.addEventListener('click', function() {
+                productCheckboxes.forEach(function(checkbox) {
+                    checkbox.checked = true;
+                });
+                if (checkboxAll) checkboxAll.checked = true;
+            });
+        }
+
+        // Botón deseleccionar todos
+        if (deselectAllBtn) {
+            deselectAllBtn.addEventListener('click', function() {
+                productCheckboxes.forEach(function(checkbox) {
+                    checkbox.checked = false;
+                });
+                if (checkboxAll) checkboxAll.checked = false;
+            });
+        }
+
+        // Actualizar checkbox principal cuando se seleccionan/deseleccionan productos individuales
+        productCheckboxes.forEach(function(checkbox) {
+            checkbox.addEventListener('change', function() {
+                const allChecked = Array.from(productCheckboxes).every(cb => cb.checked);
+                const noneChecked = Array.from(productCheckboxes).every(cb => !cb.checked);
+
+                if (checkboxAll) {
+                    checkboxAll.checked = allChecked;
+                    checkboxAll.indeterminate = !allChecked && !noneChecked;
+                }
+            });
+        });
+
+        // ========== DESCARGA POR LOTES ==========
+        const downloadBtn = document.getElementById('downloadProductsBtn');
+        if (downloadBtn) {
+            downloadBtn.addEventListener('click', function() {
+                startBatchDownload();
+            });
+        }
+
+        function startBatchDownload() {
+            const progressContainer = document.getElementById('progressContainer');
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            const progressInfo = document.getElementById('progressInfo');
+
+            // Mostrar barra de progreso
+            progressContainer.style.display = 'block';
+            downloadBtn.disabled = true;
+
+            // Primero obtener el total de productos
+            fetch(window.location.href, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'action=get-total-products'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    progressContainer.style.display = 'none';
+                    downloadBtn.disabled = false;
+                    return;
+                }
+
+                const total = data.total;
+                const batchSize = 5; // Productos por lote (con atributos es más lento pero necesario)
+                let offset = 0;
+
+                progressInfo.textContent = `Total de productos en PrestaShop: ${total}`;
+
+                // Descargar por lotes
+                downloadNextBatch(offset, total, batchSize);
+            })
+            .catch(error => {
+                alert('Error de conexión: ' + error);
+                progressContainer.style.display = 'none';
+                downloadBtn.disabled = false;
+            });
+        }
+
+        function downloadNextBatch(offset, total, batchSize) {
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            const progressInfo = document.getElementById('progressInfo');
+
+            if (offset >= total) {
+                // Descarga completa, recargar página
+                progressBar.style.width = '100%';
+                progressText.textContent = '100%';
+                progressInfo.textContent = 'Descarga completada. Recargando página...';
+
+                setTimeout(function() {
+                    window.location.reload();
+                }, 1000);
+                return;
+            }
+
+            // Calcular progreso
+            const progress = Math.min((offset / total) * 100, 100);
+            progressBar.style.width = progress + '%';
+            progressText.textContent = Math.round(progress) + '%';
+            progressInfo.textContent = `Descargados ${offset} de ${total} productos...`;
+
+            // Descargar lote
+            fetch(window.location.href, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `action=download-products-batch&offset=${offset}&limit=${batchSize}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error descargando lote: ' + data.error);
+                    progressContainer.style.display = 'none';
+                    downloadBtn.disabled = false;
+                    return;
+                }
+
+                // Continuar con el siguiente lote
+                downloadNextBatch(offset + batchSize, total, batchSize);
+            })
+            .catch(error => {
+                alert('Error de conexión: ' + error);
+                progressContainer.style.display = 'none';
+                downloadBtn.disabled = false;
+            });
+        }
+    });
+</script>
+
+<style>
+    /* Sticky header para la tabla */
+    .table-responsive thead th {
+        background-color: #f8f9fa;
+        border-bottom: 2px solid #dee2e6;
+    }
+
+    /* Hover en filas */
+    .table-hover tbody tr:hover {
+        background-color: #f5f5f5;
+    }
+
+    /* Mejorar visualización de checkboxes */
+    input[type="checkbox"] {
+        cursor: pointer;
+        width: 18px;
+        height: 18px;
+    }
+
+    input[type="checkbox"]:disabled {
+        cursor: not-allowed;
+    }
+
+    /* Estilo para código de referencia */
+    code {
+        font-size: 0.9rem;
+        padding: 2px 6px;
+        background-color: #f8f9fa;
+        border-radius: 3px;
+    }
+
+    /* Productos que ya existen en FacturaScripts */
+    .product-exists {
+        background-color: #d4edda !important;
+        border-left: 3px solid #28a745;
+    }
+
+    .product-exists:hover {
+        background-color: #c3e6cb !important;
+    }
+
+    /* Asegurar que el texto de badges sea siempre visible */
+    .badge {
+        color: #000 !important;
+        font-weight: 600 !important;
+    }
+
+    .badge-success {
+        background-color: #28a745 !important;
+        color: #fff !important;
+    }
+
+    .badge-secondary {
+        background-color: #6c757d !important;
+        color: #fff !important;
+    }
+
+    .badge-info {
+        background-color: #17a2b8 !important;
+        color: #fff !important;
+    }
+</style>
+{% endblock %}
