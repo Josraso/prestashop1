@@ -165,7 +165,7 @@ class ProductsPrestashop extends Controller
 
         try {
             $offset = (int)$this->request->request->get('offset', 0);
-            $limit = (int)$this->request->request->get('limit', 5); // Lotes de 5 productos (con atributos es más lento)
+            $limit = (int)$this->request->request->get('limit', 50); // Lotes de 50 productos para descarga completa
 
             Tools::log()->info("Descargando lote de productos: offset={$offset}, limit={$limit}");
 

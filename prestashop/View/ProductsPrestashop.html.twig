@@ -292,7 +292,7 @@
                 }
 
                 const total = data.total;
-                const batchSize = 5; // Productos por lote (con atributos es más lento pero necesario)
+                const batchSize = 50; // Productos por lote (aumentado para descarga completa)
                 let offset = 0;
 
                 progressInfo.textContent = `Total de productos en PrestaShop: ${total}`;
