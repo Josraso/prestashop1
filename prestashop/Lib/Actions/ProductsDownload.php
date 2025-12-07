@@ -1017,10 +1017,12 @@ class ProductsDownload
                 $producto->bloqueado = !$productData['active'];
                 $producto->codimpuesto = 'IVA21';
 
-                // Asignar imagen al producto (solo nombre de archivo)
+                // Asignar imagen al producto usando el ID del archivo
                 if ($imageData) {
-                    $producto->imagen = $imageData['filename'];
-                    Tools::log()->info("Imagen asignada al producto: {$imageData['filename']}");
+                    // Probar con diferentes formatos para ver cuál funciona en el menú Imagen
+                    $producto->imagen = (string)$imageData['idfile']; // Intentar con el ID del archivo
+                    Tools::log()->critical("PRUEBA IMAGEN - Asignando idfile al campo imagen: {$imageData['idfile']}");
+                    Tools::log()->info("Imagen asignada al producto (idfile): {$imageData['idfile']} (filename: {$imageData['filename']})");
                 }
 
                 // Guardar producto UNA SOLA VEZ
@@ -1091,9 +1093,10 @@ class ProductsDownload
                 $producto->bloqueado = !$productData['active'];
                 $producto->codimpuesto = 'IVA21';
 
-                // Asignar imagen ANTES de guardar (solo filename)
+                // Asignar imagen ANTES de guardar usando el ID del archivo
                 if ($imageData) {
-                    $producto->imagen = $imageData['filename'];
+                    $producto->imagen = (string)$imageData['idfile'];
+                    Tools::log()->critical("PRUEBA IMAGEN (nuevo producto) - Asignando idfile: {$imageData['idfile']}");
                 }
 
                 // Guardar producto UNA SOLA VEZ (esto crea automáticamente una variante que hereda la referencia)
