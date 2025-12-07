@@ -1,4 +1,6 @@
 <?php
+// VERSIÓN 4.0 - 2025-12-07 21:00 - CACHE CLEARED
+// SI VES ESTE COMENTARIO, EL ARCHIVO SE HA RECARGADO CORRECTAMENTE
 
 namespace FacturaScripts\Plugins\Prestashop\Lib\Actions;
 
@@ -972,6 +974,9 @@ class ProductsDownload
      */
     public function importProduct(array $productData): bool
     {
+        // VERSIÓN 4.0 - SIN lastError() - SI VES ESTE LOG, ARCHIVO RECARGADO OK
+        Tools::log()->critical("=== IMPORTANDO PRODUCTO - VERSIÓN 4.0 CARGADA ===");
+
         try {
             $reference = $productData['reference'];
 
