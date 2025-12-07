@@ -1006,8 +1006,8 @@ class ProductsDownload
      */
     public function importProduct(array $productData): bool
     {
-        // VERSIÓN 4.0 - SIN lastError() - SI VES ESTE LOG, ARCHIVO RECARGADO OK
-        Tools::log()->critical("=== IMPORTANDO PRODUCTO - VERSIÓN 4.0 CARGADA ===");
+        // VERSIÓN 5.1 - Creación de productos con flujo correcto
+        Tools::log()->critical("=== IMPORTANDO PRODUCTO - VERSIÓN 5.1 CARGADA ===");
 
         try {
             $reference = $productData['reference'];
@@ -1096,34 +1096,36 @@ class ProductsDownload
                 Tools::log()->info("✓ Producto actualizado: {$reference} | Stock: {$productData['stock']} | Precio (sin IVA): {$productData['price']} | Bloqueado: " . ($producto->bloqueado ? 'SÍ' : 'NO'));
 
             } else {
-                // CREAR NUEVO PRODUCTO
+                // ========== CREAR NUEVO PRODUCTO ==========
+                // FLUJO IDÉNTICO A ACTUALIZACIÓN (que funciona perfectamente)
                 Tools::log()->info("Creando nuevo producto: {$reference}");
 
-                // Descargar imagen PRIMERO
+                // 1. Descargar imagen PRIMERO
                 $imageData = null;
                 if (!empty($productData['image_url'])) {
                     Tools::log()->info("Descargando imagen para nuevo producto: {$reference}");
                     $imageData = $this->downloadImage($productData['image_url'], $reference);
                     if ($imageData) {
                         Tools::log()->info("Imagen descargada: {$imageData['filename']} (idfile={$imageData['idfile']})");
+                    } else {
+                        Tools::log()->warning("No se pudo descargar imagen");
                     }
                 }
 
-                // CREAR PRODUCTO (como mostraban los pantallazos: referencia + descripción)
+                // 2. Crear producto con datos básicos
                 $producto = new Producto();
-                $producto->referencia = $reference; // ← REFERENCIA EN PRODUCTO
+                $producto->referencia = $reference;
                 $producto->descripcion = $productData['name'];
                 $producto->precio = $productData['price']; // Precio SIN IVA
-                $producto->stockfis = $productData['stock']; // Stock en producto
+                $producto->stockfis = $productData['stock'];
                 $producto->nostock = false;
                 $producto->ventasinstock = false;
                 $producto->bloqueado = !$productData['active'];
                 $producto->codimpuesto = 'IVA21';
 
                 // NO asignar producto.imagen - se usa la tabla productos_imagenes
-                // La imagen se vinculará después mediante linkFileToProduct()
 
-                // Guardar producto UNA SOLA VEZ (esto crea automáticamente una variante que hereda la referencia)
+                // 3. Guardar producto (crea variante automáticamente)
                 if (!$producto->save()) {
                     Tools::log()->error("Error creando producto: {$reference}");
                     return false;
@@ -1131,40 +1133,40 @@ class ProductsDownload
 
                 Tools::log()->info("Producto creado con ID: {$producto->idproducto}, Ref: {$producto->referencia}");
 
-                // Vincular imagen mediante attached_files_rel
+                // 4. Vincular imagen (attached_files_rel + productos_imagenes)
                 if ($imageData) {
                     $this->linkFileToProduct($imageData['idfile'], $producto->idproducto, $reference);
-                    Tools::log()->info("Imagen vinculada: {$imageData['filename']} (idfile={$imageData['idfile']})");
+                    Tools::log()->info("Imagen vinculada via attached_files_rel y productos_imagenes (idfile={$imageData['idfile']})");
                 }
 
-                // Obtener la variante auto-creada (ya tiene la referencia heredada del producto)
-                $variantes = $producto->getVariants();
-                if (empty($variantes)) {
-                    Tools::log()->error("No se creó variante automática para: {$reference}");
+                // 5. RECARGAR variante por referencia (igual que en actualización)
+                $variante = new Variante();
+                if (!$variante->loadFromCode('', [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('referencia', $reference)])) {
+                    Tools::log()->error("No se pudo cargar variante auto-creada para: {$reference}");
                     return false;
                 }
 
-                // Asignar stock y precio a la variante
-                $variante = $variantes[0];
+                Tools::log()->info("Variante auto-creada cargada - ID: {$variante->idvariante}, Ref: {$variante->referencia}");
+
+                // 6. Actualizar stock y precio en la variante
                 $variante->stockfis = $productData['stock'];
                 $variante->precio = $productData['price']; // Precio SIN IVA
                 $variante->coste = 0;
 
                 if (!$variante->save()) {
-                    Tools::log()->error("Error guardando variante: {$reference}");
+                    Tools::log()->error("Error actualizando variante: {$reference}");
                     return false;
                 }
 
-                Tools::log()->info("Variante guardada - ID: {$variante->idvariante}, Ref: {$variante->referencia}, Stock: {$variante->stockfis}");
+                // 7. REGISTRAR MOVIMIENTO DE STOCK en tabla stocks (mediante modelo)
+                if (!$this->actualizarStockVariante($variante->idvariante, $productData['stock'], $reference)) {
+                    Tools::log()->warning("No se pudo actualizar stock en almacén para: {$reference}");
+                }
 
-                Tools::log()->info("Variante guardada. ID: {$variante->idvariante}, Ref: {$variante->referencia}");
-
-                // Verificar que se guardó correctamente
+                // 8. Verificar que se guardó correctamente
                 $varianteCheck = new Variante();
                 if ($varianteCheck->loadFromCode('', [new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('referencia', $reference)])) {
                     Tools::log()->info("Verificación BD - Stock: {$varianteCheck->stockfis}, Precio (sin IVA): {$varianteCheck->precio}, ID Producto: {$varianteCheck->idproducto}");
-                } else {
-                    Tools::log()->warning("ADVERTENCIA: No se pudo verificar variante recién creada para: {$reference}");
                 }
 
                 Tools::log()->info("✓ Producto creado: {$reference} | Stock: {$productData['stock']} | Precio (sin IVA): {$productData['price']} | Bloqueado: " . ($producto->bloqueado ? 'SÍ' : 'NO'));
