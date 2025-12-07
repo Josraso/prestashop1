@@ -5,7 +5,6 @@ namespace FacturaScripts\Plugins\Prestashop\Lib\Actions;
 use FacturaScripts\Core\Tools;
 use FacturaScripts\Dinamic\Model\Producto;
 use FacturaScripts\Dinamic\Model\Variante;
-use FacturaScripts\Dinamic\Model\Stock;
 use FacturaScripts\Plugins\Prestashop\Lib\PrestashopConnection;
 use FacturaScripts\Plugins\Prestashop\Model\PrestashopConfig;
 
@@ -846,7 +845,7 @@ class ProductsDownload
     }
 
     /**
-     * Actualiza el stock de una variante en el almacén usando el modelo Stock
+     * Actualiza el stock de una variante en el almacén
      *
      * @param int $idvariante ID de la variante
      * @param int $cantidad Cantidad de stock
@@ -856,12 +855,13 @@ class ProductsDownload
     private function actualizarStockVariante(int $idvariante, int $cantidad, string $referencia): bool
     {
         try {
+            $db = new \FacturaScripts\Core\Base\DataBase();
+
             // Obtener almacén por defecto de la configuración
             $codalmacen = $this->config->codalmacen ?? null;
 
             if (empty($codalmacen)) {
                 // Si no hay almacén configurado, buscar el primero disponible
-                $db = new \FacturaScripts\Core\Base\DataBase();
                 $sqlAlmacen = "SELECT codalmacen FROM almacenes ORDER BY codalmacen LIMIT 1";
                 $almacenes = $db->select($sqlAlmacen);
 
@@ -876,50 +876,46 @@ class ProductsDownload
 
             Tools::log()->info("Actualizando stock de variante {$idvariante} en almacén {$codalmacen}: {$cantidad} unidades");
 
-            // Usar el modelo Stock de FacturaScripts
-            $stock = new Stock();
+            // Verificar si ya existe registro de stock para esta variante en este almacén
+            $sqlCheck = "SELECT cantidad FROM stocks
+                         WHERE referencia = " . $db->var2str($referencia) . "
+                         AND codalmacen = " . $db->var2str($codalmacen);
+            $existing = $db->select($sqlCheck);
 
-            // Buscar stock existente para esta referencia y almacén
-            $where = [
-                new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('referencia', $referencia),
-                new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('codalmacen', $codalmacen)
-            ];
+            if (!empty($existing)) {
+                // Actualizar stock existente
+                $sqlUpdate = "UPDATE stocks
+                              SET cantidad = " . $db->var2str($cantidad) . ",
+                                  disponible = " . $db->var2str($cantidad) . ",
+                                  reservada = 0,
+                                  pterecibir = 0
+                              WHERE referencia = " . $db->var2str($referencia) . "
+                              AND codalmacen = " . $db->var2str($codalmacen);
 
-            if ($stock->loadFromCode('', $where)) {
-                // Stock existente - actualizar
-                $cantidadAnterior = $stock->cantidad;
-                $stock->cantidad = $cantidad;
-                $stock->disponible = $cantidad;
-                $stock->reservada = 0;
-                $stock->pterecibir = 0;
-
-                if ($stock->save()) {
-                    Tools::log()->info("✓ Stock actualizado mediante modelo Stock: {$referencia} → de {$cantidadAnterior} a {$cantidad} unidades");
-                    return true;
-                } else {
-                    Tools::log()->error("Error guardando stock actualizado para {$referencia}");
+                if (!$db->exec($sqlUpdate)) {
+                    Tools::log()->error("Error actualizando stocks: " . $db->lastError());
                     return false;
                 }
+
+                Tools::log()->info("✓ Stock actualizado en tabla stocks: {$referencia} → {$cantidad} unidades");
             } else {
-                // Stock nuevo - crear
-                $stock->referencia = $referencia;
-                $stock->codalmacen = $codalmacen;
-                $stock->cantidad = $cantidad;
-                $stock->disponible = $cantidad;
-                $stock->reservada = 0;
-                $stock->pterecibir = 0;
+                // Crear nuevo registro de stock
+                $sqlInsert = "INSERT INTO stocks (referencia, codalmacen, cantidad, disponible, reservada, pterecibir)
+                              VALUES (" . $db->var2str($referencia) . ", " . $db->var2str($codalmacen) . ", " .
+                              $db->var2str($cantidad) . ", " . $db->var2str($cantidad) . ", 0, 0)";
 
-                if ($stock->save()) {
-                    Tools::log()->info("✓ Stock creado mediante modelo Stock: {$referencia} → {$cantidad} unidades en almacén {$codalmacen}");
-                    return true;
-                } else {
-                    Tools::log()->error("Error creando nuevo registro de stock para {$referencia}");
+                if (!$db->exec($sqlInsert)) {
+                    Tools::log()->error("Error insertando en stocks: " . $db->lastError());
                     return false;
                 }
+
+                Tools::log()->info("✓ Stock creado en tabla stocks: {$referencia} → {$cantidad} unidades en almacén {$codalmacen}");
             }
 
+            return true;
+
         } catch (\Exception $e) {
-            Tools::log()->error("Error actualizando stock de variante {$referencia}: " . $e->getMessage());
+            Tools::log()->error("Error actualizando stock de variante: " . $e->getMessage());
             return false;
         }
     }
@@ -972,10 +968,10 @@ class ProductsDownload
                 $producto->bloqueado = !$productData['active'];
                 $producto->codimpuesto = 'IVA21';
 
-                // Asignar imagen al producto (ruta relativa desde MyFiles)
+                // Asignar imagen al producto (solo nombre de archivo)
                 if ($imageData) {
-                    $producto->imagen = 'Product/' . $imageData['filename'];
-                    Tools::log()->info("Imagen asignada al producto: Product/{$imageData['filename']}");
+                    $producto->imagen = $imageData['filename'];
+                    Tools::log()->info("Imagen asignada al producto: {$imageData['filename']}");
                 }
 
                 // Guardar producto UNA SOLA VEZ
