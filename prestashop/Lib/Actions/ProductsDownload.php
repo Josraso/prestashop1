@@ -34,16 +34,22 @@ class ProductsDownload
      */
     public function getAllProducts(int $offset = 0, int $limit = 50): array
     {
+        Tools::log()->critical("========== getAllProducts LLAMADO ==========");
+        Tools::log()->critical("Offset: {$offset}, Limit: {$limit}");
+
         if (!$this->config) {
             Tools::log()->error('PrestaShop: Configuración no encontrada');
             return ['products' => []];
         }
+
+        Tools::log()->critical("Config OK");
 
         if (!$this->connection->isConnected()) {
             Tools::log()->error('PrestaShop: No se pudo conectar con la tienda');
             return ['products' => []];
         }
 
+        Tools::log()->critical("Conexión OK");
         Tools::log()->info("[ProductsDownload] Obteniendo productos (offset: {$offset}, limit: {$limit})...");
 
         try {
@@ -56,7 +62,10 @@ class ProductsDownload
                 'limit' => "{$offset},{$limit}"
             ];
 
+            Tools::log()->critical("Llamando a PrestaShop API...");
             $xmlString = $webService->get('products', null, null, $params);
+            Tools::log()->critical("Respuesta de API recibida");
+
             $xml = simplexml_load_string($xmlString);
 
             if (!isset($xml->products->product)) {
@@ -70,6 +79,7 @@ class ProductsDownload
             }
 
             Tools::log()->info('[ProductsDownload] Encontrados ' . count($productIds) . ' productos en este lote');
+            Tools::log()->critical("IDs de productos: " . implode(', ', $productIds));
 
             // Obtener detalles completos de cada producto
             $processed = 0;
@@ -97,7 +107,8 @@ class ProductsDownload
                 }
             }
 
-            Tools::log()->info("[ProductsDownload] Resumen del lote: {$processed} productos procesados, {$errors} errores, " . count($products) . " variantes totales");
+            Tools::log()->critical("[ProductsDownload] RESULTADO: {$processed} productos procesados, {$errors} errores, " . count($products) . " variantes totales");
+            Tools::log()->critical("========== getAllProducts FINALIZADO ==========");
 
             return [
                 'products' => $products,
@@ -106,6 +117,8 @@ class ProductsDownload
             ];
 
         } catch (\Exception $e) {
+            Tools::log()->critical("EXCEPCIÓN EN getAllProducts: " . $e->getMessage());
+            Tools::log()->critical("Stack trace: " . $e->getTraceAsString());
             Tools::log()->error('Error obteniendo productos: ' . $e->getMessage());
             return ['products' => []];
         }
