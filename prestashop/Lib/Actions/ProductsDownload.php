@@ -1115,3 +1115,4 @@ class ProductsDownload
         }
     }
 }
+// Cache invalidation: 2025-12-07 20:00
