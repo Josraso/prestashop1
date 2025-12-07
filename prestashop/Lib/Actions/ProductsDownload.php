@@ -808,7 +808,9 @@ class ProductsDownload
     }
 
     /**
-     * Vincula un archivo a un producto mediante attached_files_rel
+     * Vincula un archivo a un producto mediante attached_files_rel Y productos_imagenes
+     * attached_files_rel → Aparece en "Archivos adjuntos"
+     * productos_imagenes → Aparece en menú "Imagen" del producto
      *
      * @param int $idfile ID del archivo en attached_files
      * @param int $idproducto ID del producto
@@ -820,7 +822,7 @@ class ProductsDownload
         try {
             $db = new \FacturaScripts\Core\Base\DataBase();
 
-            // Verificar si ya existe una relación para este producto
+            // 1. ATTACHED_FILES_REL (para archivos adjuntos genéricos)
             $sqlCheck = "SELECT id FROM attached_files_rel
                          WHERE model = 'Producto' AND modelid = " . $db->var2str($idproducto);
             $existing = $db->select($sqlCheck);
@@ -849,6 +851,36 @@ class ProductsDownload
                 }
 
                 Tools::log()->info("✓ Relación creada en attached_files_rel: idproducto={$idproducto}, idfile={$idfile}");
+            }
+
+            // 2. PRODUCTOS_IMAGENES (para que aparezca en menú "Imagen")
+            $sqlCheckImg = "SELECT id FROM productos_imagenes
+                            WHERE idproducto = " . $db->var2str($idproducto) . " AND referencia = " . $db->var2str($referencia);
+            $existingImg = $db->select($sqlCheckImg);
+
+            if (!empty($existingImg)) {
+                // Actualizar imagen existente
+                $sqlUpdateImg = "UPDATE productos_imagenes SET idfile = " . $db->var2str($idfile) . "
+                                 WHERE idproducto = " . $db->var2str($idproducto) . " AND referencia = " . $db->var2str($referencia);
+
+                if (!$db->exec($sqlUpdateImg)) {
+                    Tools::log()->error("Error actualizando productos_imagenes");
+                    return false;
+                }
+
+                Tools::log()->critical("✓✓✓ IMAGEN ACTUALIZADA EN MENÚ 'Imagen': idproducto={$idproducto}, idfile={$idfile}");
+            } else {
+                // Crear nueva entrada en productos_imagenes
+                $sqlInsertImg = "INSERT INTO productos_imagenes (idfile, idproducto, referencia, orden)
+                                 VALUES (" . $db->var2str($idfile) . ", " . $db->var2str($idproducto) . ", " .
+                                 $db->var2str($referencia) . ", 1)";
+
+                if (!$db->exec($sqlInsertImg)) {
+                    Tools::log()->error("Error insertando en productos_imagenes");
+                    return false;
+                }
+
+                Tools::log()->critical("✓✓✓ IMAGEN CREADA EN MENÚ 'Imagen': idproducto={$idproducto}, idfile={$idfile}, ref={$referencia}");
             }
 
             return true;
@@ -1017,13 +1049,8 @@ class ProductsDownload
                 $producto->bloqueado = !$productData['active'];
                 $producto->codimpuesto = 'IVA21';
 
-                // Asignar imagen al producto usando el ID del archivo
-                if ($imageData) {
-                    // Probar con diferentes formatos para ver cuál funciona en el menú Imagen
-                    $producto->imagen = (string)$imageData['idfile']; // Intentar con el ID del archivo
-                    Tools::log()->critical("PRUEBA IMAGEN - Asignando idfile al campo imagen: {$imageData['idfile']}");
-                    Tools::log()->info("Imagen asignada al producto (idfile): {$imageData['idfile']} (filename: {$imageData['filename']})");
-                }
+                // NO asignar producto.imagen - se usa la tabla productos_imagenes
+                // La imagen se vinculará después mediante linkFileToProduct()
 
                 // Guardar producto UNA SOLA VEZ
                 if (!$producto->save()) {
@@ -1093,11 +1120,8 @@ class ProductsDownload
                 $producto->bloqueado = !$productData['active'];
                 $producto->codimpuesto = 'IVA21';
 
-                // Asignar imagen ANTES de guardar usando el ID del archivo
-                if ($imageData) {
-                    $producto->imagen = (string)$imageData['idfile'];
-                    Tools::log()->critical("PRUEBA IMAGEN (nuevo producto) - Asignando idfile: {$imageData['idfile']}");
-                }
+                // NO asignar producto.imagen - se usa la tabla productos_imagenes
+                // La imagen se vinculará después mediante linkFileToProduct()
 
                 // Guardar producto UNA SOLA VEZ (esto crea automáticamente una variante que hereda la referencia)
                 if (!$producto->save()) {
