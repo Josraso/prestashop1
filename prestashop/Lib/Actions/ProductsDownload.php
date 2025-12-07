@@ -858,7 +858,8 @@ class ProductsDownload
     }
 
     /**
-     * Actualiza el stock de una variante en el almacén
+     * Actualiza el stock de una variante usando el método correcto de FacturaScripts
+     * Esto asegura que el stock sea usable en documentos (facturas, albaranes)
      *
      * @param int $idvariante ID de la variante
      * @param int $cantidad Cantidad de stock
@@ -868,13 +869,11 @@ class ProductsDownload
     private function actualizarStockVariante(int $idvariante, int $cantidad, string $referencia): bool
     {
         try {
-            $db = new \FacturaScripts\Core\Base\DataBase();
-
-            // Obtener almacén por defecto de la configuración
+            // Obtener almacén por defecto
             $codalmacen = $this->config->codalmacen ?? null;
 
             if (empty($codalmacen)) {
-                // Si no hay almacén configurado, buscar el primero disponible
+                $db = new \FacturaScripts\Core\Base\DataBase();
                 $sqlAlmacen = "SELECT codalmacen FROM almacenes ORDER BY codalmacen LIMIT 1";
                 $almacenes = $db->select($sqlAlmacen);
 
@@ -882,53 +881,85 @@ class ProductsDownload
                     $codalmacen = $almacenes[0]['codalmacen'];
                     Tools::log()->warning("No hay almacén configurado, usando: {$codalmacen}");
                 } else {
-                    Tools::log()->error("No hay almacenes disponibles en el sistema");
+                    Tools::log()->error("No hay almacenes disponibles");
                     return false;
                 }
             }
 
-            Tools::log()->info("Actualizando stock de variante {$idvariante} en almacén {$codalmacen}: {$cantidad} unidades");
+            Tools::log()->info("Registrando stock de {$referencia} en almacén {$codalmacen}: {$cantidad} unidades");
 
-            // Verificar si ya existe registro de stock para esta variante en este almacén
-            $sqlCheck = "SELECT cantidad FROM stocks
-                         WHERE referencia = " . $db->var2str($referencia) . "
-                         AND codalmacen = " . $db->var2str($codalmacen);
+            // Intentar usar el modelo DinStock de FacturaScripts (método correcto)
+            try {
+                $stockModel = new \FacturaScripts\Dinamic\Model\Stock();
+
+                // Buscar stock existente
+                $where = [
+                    new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('referencia', $referencia),
+                    new \FacturaScripts\Core\Base\DataBase\DataBaseWhere('codalmacen', $codalmacen)
+                ];
+
+                if ($stockModel->loadFromCode('', $where)) {
+                    // Stock existe - actualizar
+                    $stockModel->cantidad = $cantidad;
+                    $stockModel->disponible = $cantidad;
+
+                    if ($stockModel->save()) {
+                        Tools::log()->info("✓ Stock actualizado mediante modelo FacturaScripts: {$referencia} → {$cantidad}");
+                        return true;
+                    }
+                } else {
+                    // Stock nuevo - crear
+                    $stockModel->referencia = $referencia;
+                    $stockModel->codalmacen = $codalmacen;
+                    $stockModel->cantidad = $cantidad;
+                    $stockModel->disponible = $cantidad;
+                    $stockModel->reservada = 0;
+                    $stockModel->pterecibir = 0;
+
+                    if ($stockModel->save()) {
+                        Tools::log()->info("✓ Stock creado mediante modelo FacturaScripts: {$referencia} → {$cantidad}");
+                        return true;
+                    }
+                }
+
+                Tools::log()->warning("No se pudo guardar stock mediante modelo, intentando SQL directo");
+
+            } catch (\Exception $modelEx) {
+                Tools::log()->warning("Modelo Stock no disponible, usando SQL directo: " . $modelEx->getMessage());
+            }
+
+            // Fallback: SQL directo si el modelo no funciona
+            $db = new \FacturaScripts\Core\Base\DataBase();
+            $sqlCheck = "SELECT cantidad FROM stocks WHERE referencia = " . $db->var2str($referencia) .
+                       " AND codalmacen = " . $db->var2str($codalmacen);
             $existing = $db->select($sqlCheck);
 
             if (!empty($existing)) {
-                // Actualizar stock existente
-                $sqlUpdate = "UPDATE stocks
-                              SET cantidad = " . $db->var2str($cantidad) . ",
-                                  disponible = " . $db->var2str($cantidad) . ",
-                                  reservada = 0,
-                                  pterecibir = 0
-                              WHERE referencia = " . $db->var2str($referencia) . "
-                              AND codalmacen = " . $db->var2str($codalmacen);
+                $sqlUpdate = "UPDATE stocks SET cantidad = " . $db->var2str($cantidad) .
+                           ", disponible = " . $db->var2str($cantidad) .
+                           ", reservada = 0, pterecibir = 0 WHERE referencia = " . $db->var2str($referencia) .
+                           " AND codalmacen = " . $db->var2str($codalmacen);
 
-                if (!$db->exec($sqlUpdate)) {
-                    Tools::log()->error("Error actualizando stocks");
-                    return false;
+                if ($db->exec($sqlUpdate)) {
+                    Tools::log()->info("✓ Stock actualizado via SQL: {$referencia} → {$cantidad}");
+                    return true;
                 }
-
-                Tools::log()->info("✓ Stock actualizado en tabla stocks: {$referencia} → {$cantidad} unidades");
             } else {
-                // Crear nuevo registro de stock
-                $sqlInsert = "INSERT INTO stocks (referencia, codalmacen, cantidad, disponible, reservada, pterecibir)
-                              VALUES (" . $db->var2str($referencia) . ", " . $db->var2str($codalmacen) . ", " .
-                              $db->var2str($cantidad) . ", " . $db->var2str($cantidad) . ", 0, 0)";
+                $sqlInsert = "INSERT INTO stocks (referencia, codalmacen, cantidad, disponible, reservada, pterecibir) VALUES (" .
+                           $db->var2str($referencia) . ", " . $db->var2str($codalmacen) . ", " .
+                           $db->var2str($cantidad) . ", " . $db->var2str($cantidad) . ", 0, 0)";
 
-                if (!$db->exec($sqlInsert)) {
-                    Tools::log()->error("Error insertando en stocks");
-                    return false;
+                if ($db->exec($sqlInsert)) {
+                    Tools::log()->info("✓ Stock creado via SQL: {$referencia} → {$cantidad}");
+                    return true;
                 }
-
-                Tools::log()->info("✓ Stock creado en tabla stocks: {$referencia} → {$cantidad} unidades en almacén {$codalmacen}");
             }
 
-            return true;
+            Tools::log()->error("No se pudo registrar stock");
+            return false;
 
         } catch (\Exception $e) {
-            Tools::log()->error("Error actualizando stock de variante: " . $e->getMessage());
+            Tools::log()->error("Error actualizando stock: " . $e->getMessage());
             return false;
         }
     }
