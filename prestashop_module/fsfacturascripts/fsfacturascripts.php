@@ -353,11 +353,11 @@ class FsFacturaScripts extends Module
             return ['error' => 'URL API o API Key no configurados'];
         }
 
-        // Llamar API REST: /api/3/albaranescli con Token en HEADER
-        $api_url = rtrim($fs_url, '/') . '/api/3/albaranescli';
+        // PRIMERO: Obtener lista de recursos disponibles llamando a /api/3
+        $api_base = rtrim($fs_url, '/') . '/api/3';
 
         PrestaShopLogger::addLog(
-            "FacturaScripts API: Llamando a {$api_url} con Token en header",
+            "FacturaScripts API: Obteniendo lista de recursos desde {$api_base}",
             1,
             null,
             'Module',
@@ -365,7 +365,7 @@ class FsFacturaScripts extends Module
             true
         );
 
-        $ch = curl_init($api_url);
+        $ch = curl_init($api_base);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
@@ -380,7 +380,7 @@ class FsFacturaScripts extends Module
         curl_close($ch);
 
         PrestaShopLogger::addLog(
-            "FacturaScripts API: Respuesta HTTP {$http_code}",
+            "FacturaScripts API: Respuesta HTTP {$http_code} - Body: " . substr($response, 0, 500),
             1,
             null,
             'Module',
@@ -392,11 +392,11 @@ class FsFacturaScripts extends Module
             return ['error' => "Error de conexión: {$curl_error}"];
         }
 
-        // Intentar decodificar la respuesta primero para obtener mensaje de error específico
+        // Intentar decodificar la respuesta
         $data_error = json_decode($response, true);
 
         if ($http_code == 404) {
-            return ['error' => "Error 404: Endpoint no encontrado. Verifica que FacturaScripts esté actualizado y el API activada en: Panel Control > Activar API"];
+            return ['error' => "Error 404: API v3 no encontrada. Verifica que FacturaScripts esté actualizado. URL probada: {$api_base}"];
         }
 
         if ($http_code == 403 || ($http_code == 200 && isset($data_error['status']) && $data_error['status'] === 'error')) {
