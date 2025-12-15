@@ -18,7 +18,7 @@ class FsFacturaScripts extends Module
     {
         $this->name = 'fsfacturascripts';
         $this->tab = 'billing_invoicing';
-        $this->version = '3.0.3';
+        $this->version = '3.0.4';
         $this->author = 'FacturaScripts';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -370,8 +370,8 @@ class FsFacturaScripts extends Module
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Token: ' . $api_key,
-            'Accept: application/json'
+            'Token:' . $api_key,
+            'Accept:application/json'
         ]);
 
         $response = curl_exec($ch);
