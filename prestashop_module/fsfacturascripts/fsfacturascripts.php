@@ -18,7 +18,7 @@ class FsFacturaScripts extends Module
     {
         $this->name = 'fsfacturascripts';
         $this->tab = 'billing_invoicing';
-        $this->version = '3.0.5';
+        $this->version = '3.0.6';
         $this->author = 'FacturaScripts';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -353,11 +353,11 @@ class FsFacturaScripts extends Module
             return ['error' => 'URL API o API Key no configurados'];
         }
 
-        // PRIMERO: Obtener lista de recursos disponibles llamando a /api/3
-        $api_base = rtrim($fs_url, '/') . '/api/3';
+        // Llamar al endpoint correcto: /api/3/albaranclientes (NO albaranescli)
+        $api_url = rtrim($fs_url, '/') . '/api/3/albaranclientes';
 
         PrestaShopLogger::addLog(
-            "FacturaScripts API: Obteniendo lista de recursos desde {$api_base}",
+            "FacturaScripts API: Obteniendo albaranes desde {$api_url}",
             1,
             null,
             'Module',
@@ -365,7 +365,7 @@ class FsFacturaScripts extends Module
             true
         );
 
-        $ch = curl_init($api_base);
+        $ch = curl_init($api_url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
@@ -380,7 +380,7 @@ class FsFacturaScripts extends Module
         curl_close($ch);
 
         PrestaShopLogger::addLog(
-            "FacturaScripts API: Respuesta HTTP {$http_code} - Body: " . substr($response, 0, 500),
+            "FacturaScripts API: HTTP {$http_code} - Primeros 500 chars: " . substr($response, 0, 500),
             1,
             null,
             'Module',
@@ -392,76 +392,80 @@ class FsFacturaScripts extends Module
             return ['error' => "Error de conexión: {$curl_error}"];
         }
 
-        // Intentar decodificar la respuesta
-        $data_error = json_decode($response, true);
-
         if ($http_code == 404) {
-            return ['error' => "Error 404: API v3 no encontrada. Verifica que FacturaScripts esté actualizado. URL probada: {$api_base}"];
+            return ['error' => "Error 404: Endpoint 'albaranclientes' no encontrado. URL: {$api_url}"];
         }
 
         if ($http_code == 401) {
-            $msg = isset($data_error['message']) ? $data_error['message'] : 'Token inválido';
-            return ['error' => "Error 401 Unauthorized: {$msg}. Verifica que la API Key sea correcta y tenga 'Acceso completo' en: Panel Control > Claves API"];
-        }
-
-        if ($http_code == 403 || ($http_code == 200 && isset($data_error['status']) && $data_error['status'] === 'error')) {
-            $msg = isset($data_error['message']) ? $data_error['message'] : 'API Key inválida';
-            return ['error' => "Error de autenticación: {$msg}. Verifica que la API Key sea correcta y tenga 'Acceso completo' en: Panel Control > Claves API"];
+            return ['error' => "Error 401: Token inválido o sin permisos"];
         }
 
         if ($http_code != 200) {
-            PrestaShopLogger::addLog(
-                "FacturaScripts API: HTTP {$http_code} - Respuesta: " . substr($response, 0, 500),
-                3,
-                null,
-                'Module',
-                0,
-                true
-            );
             return ['error' => "Error HTTP {$http_code}. Respuesta: " . substr($response, 0, 200)];
         }
 
-        // DECODIFICAR RESPUESTA: Debería ser lista de recursos disponibles
-        $recursos = json_decode($response, true);
+        $albaranes = json_decode($response, true);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
-            return ['error' => 'Respuesta JSON inválida del API: ' . json_last_error_msg()];
+            return ['error' => 'Error al decodificar JSON: ' . json_last_error_msg()];
         }
 
-        // MOSTRAR recursos disponibles para debug
-        if (is_array($recursos)) {
-            $recursos_str = print_r($recursos, true);
-            PrestaShopLogger::addLog(
-                "FacturaScripts API: Recursos disponibles:\n" . substr($recursos_str, 0, 5000),
-                1,
-                null,
-                'Module',
-                0,
-                true
+        if (!is_array($albaranes)) {
+            return ['error' => 'La respuesta no es un array. Tipo: ' . gettype($albaranes)];
+        }
+
+        $sincronizados = 0;
+
+        foreach ($albaranes as $albaran) {
+            // Solo procesar albaranes que tienen numero2 (referencia PrestaShop)
+            if (empty($albaran['numero2'])) {
+                continue;
+            }
+
+            // Buscar pedido en PrestaShop por referencia
+            $sql = 'SELECT id_order FROM ' . _DB_PREFIX_ . 'orders WHERE reference = "' . pSQL($albaran['numero2']) . '"';
+            $order_id = Db::getInstance()->getValue($sql);
+
+            if (!$order_id) {
+                continue;
+            }
+
+            // Verificar si ya existe
+            $exists = Db::getInstance()->getValue(
+                'SELECT id_fs_facturascripts FROM ' . _DB_PREFIX_ . 'fs_facturascripts WHERE id_order = ' . (int)$order_id
             );
 
-            // Buscar endpoints relacionados con facturas
-            $facturas_endpoints = [];
-            foreach ($recursos as $key => $recurso) {
-                $recurso_lower = strtolower(is_string($recurso) ? $recurso : (is_string($key) ? $key : ''));
-                if (strpos($recurso_lower, 'factura') !== false ||
-                    strpos($recurso_lower, 'albaran') !== false ||
-                    strpos($recurso_lower, 'cliente') !== false) {
-                    $facturas_endpoints[] = is_string($recurso) ? $recurso : $key;
-                }
-            }
+            $data_insert = [
+                'id_order' => (int)$order_id,
+                'order_reference' => pSQL($albaran['numero2']),
+                'fs_albaran_id' => (int)$albaran['idalbaran'],
+                'fs_factura_id' => !empty($albaran['idfactura']) ? (int)$albaran['idfactura'] : null,
+                'fs_factura_code' => !empty($albaran['codigofactura']) ? pSQL($albaran['codigofactura']) : null,
+                'webhook_sent' => 1,
+                'webhook_response' => 'Sincronizado desde API',
+                'date_upd' => date('Y-m-d H:i:s')
+            ];
 
-            $msg = "✓ API conectada correctamente. ";
-            if (!empty($facturas_endpoints)) {
-                $msg .= "Endpoints relacionados con facturas/albaranes: " . implode(', ', array_slice($facturas_endpoints, 0, 5));
+            if ($exists) {
+                Db::getInstance()->update('fs_facturascripts', $data_insert, 'id_order = ' . (int)$order_id);
             } else {
-                $msg .= "Total recursos: " . count($recursos) . ". Mira los logs de PrestaShop para ver la lista completa.";
+                $data_insert['date_add'] = date('Y-m-d H:i:s');
+                Db::getInstance()->insert('fs_facturascripts', $data_insert);
             }
 
-            return ['error' => $msg];
+            $sincronizados++;
         }
 
-        return ['error' => 'La respuesta del API no es un array. Tipo: ' . gettype($recursos) . '. Contenido: ' . substr($response, 0, 300)];
+        PrestaShopLogger::addLog(
+            "FacturaScripts API: ✓ Sincronizados {$sincronizados} pedidos de " . count($albaranes) . " albaranes encontrados",
+            1,
+            null,
+            'Module',
+            0,
+            true
+        );
+
+        return $sincronizados;
     }
 
     /**
