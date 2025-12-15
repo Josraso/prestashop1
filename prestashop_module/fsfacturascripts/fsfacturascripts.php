@@ -18,7 +18,7 @@ class FsFacturaScripts extends Module
     {
         $this->name = 'fsfacturascripts';
         $this->tab = 'billing_invoicing';
-        $this->version = '3.0.0';
+        $this->version = '3.0.1';
         $this->author = 'FacturaScripts';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -177,10 +177,15 @@ class FsFacturaScripts extends Module
 
         // Guardar configuración
         if (Tools::isSubmit('submitFsFacturaScriptsConfig')) {
-            Configuration::updateValue('FS_FACTURASCRIPTS_URL', Tools::getValue('FS_FACTURASCRIPTS_URL'));
-            Configuration::updateValue('FS_FACTURASCRIPTS_API_KEY', Tools::getValue('FS_FACTURASCRIPTS_API_KEY'));
-            Configuration::updateValue('FS_FACTURASCRIPTS_TOKEN', Tools::getValue('FS_FACTURASCRIPTS_TOKEN'));
+            // Webhooks
             Configuration::updateValue('FS_WEBHOOK_ENABLED', (int)Tools::getValue('FS_WEBHOOK_ENABLED'));
+            Configuration::updateValue('FS_WEBHOOK_URL', Tools::getValue('FS_WEBHOOK_URL'));
+            Configuration::updateValue('FS_WEBHOOK_TOKEN', Tools::getValue('FS_WEBHOOK_TOKEN'));
+
+            // API REST
+            Configuration::updateValue('FS_API_ENABLED', (int)Tools::getValue('FS_API_ENABLED'));
+            Configuration::updateValue('FS_API_URL', Tools::getValue('FS_API_URL'));
+            Configuration::updateValue('FS_API_KEY', Tools::getValue('FS_API_KEY'));
             Configuration::updateValue('FS_PDF_FORMAT', (int)Tools::getValue('FS_PDF_FORMAT'));
 
             $output .= $this->displayConfirmation($this->l('Configuración guardada'));
@@ -198,56 +203,83 @@ class FsFacturaScripts extends Module
         $fields_form = [
             'form' => [
                 'legend' => [
-                    'title' => $this->l('Configuración FacturaScripts v3 (API REST)'),
+                    'title' => $this->l('Configuración FacturaScripts v3.0.0'),
                     'icon' => 'icon-cogs'
                 ],
                 'description' => '<div class="alert alert-info">
                     <strong>Estado BD:</strong> ' . $tableStatus . '<br>
-                    <strong>Modo:</strong> Usa API REST de FacturaScripts<br>
                     <a href="https://facturascripts.com/publicaciones/la-api-rest-de-facturascripts-912" target="_blank">📖 Documentación API</a>
                 </div>',
                 'input' => [
+                    // SECCIÓN 1: WEBHOOKS (para importar pedidos nuevos)
                     [
-                        'type' => 'text',
-                        'label' => $this->l('URL de FacturaScripts'),
-                        'name' => 'FS_FACTURASCRIPTS_URL',
-                        'desc' => $this->l('URL completa (ej: https://tudominio.com)'),
-                        'required' => true,
-                        'size' => 50
+                        'type' => 'html',
+                        'name' => 'webhook_section',
+                        'html_content' => '<hr><h3>🔔 WEBHOOKS (Importar pedidos nuevos a FacturaScripts)</h3>'
+                    ],
+                    [
+                        'type' => 'switch',
+                        'label' => $this->l('Activar Webhooks'),
+                        'name' => 'FS_WEBHOOK_ENABLED',
+                        'desc' => $this->l('Enviar pedidos automáticamente a FacturaScripts cuando se crean/actualizan'),
+                        'is_bool' => true,
+                        'values' => [
+                            ['id' => 'webhook_on', 'value' => 1, 'label' => $this->l('Sí')],
+                            ['id' => 'webhook_off', 'value' => 0, 'label' => $this->l('No')]
+                        ]
                     ],
                     [
                         'type' => 'text',
-                        'label' => $this->l('API Key'),
-                        'name' => 'FS_FACTURASCRIPTS_API_KEY',
-                        'desc' => $this->l('Crear en: Panel Control > Claves API'),
-                        'required' => true,
+                        'label' => $this->l('URL Webhook FacturaScripts'),
+                        'name' => 'FS_WEBHOOK_URL',
+                        'desc' => $this->l('URL base de FacturaScripts (ej: https://mesascomedor.es)'),
                         'size' => 50
                     ],
                     [
                         'type' => 'text',
                         'label' => $this->l('Token Webhook'),
-                        'name' => 'FS_FACTURASCRIPTS_TOKEN',
-                        'desc' => $this->l('Token para webhooks (copiar de plugin FacturaScripts)'),
-                        'required' => true,
+                        'name' => 'FS_WEBHOOK_TOKEN',
+                        'desc' => $this->l('Token del plugin FacturaScripts (copiar de Configuración PrestaShop)'),
+                        'size' => 50
+                    ],
+
+                    // SECCIÓN 2: API REST (para consultar facturas)
+                    [
+                        'type' => 'html',
+                        'name' => 'api_section',
+                        'html_content' => '<hr><h3>🔌 API REST (Consultar facturas desde FacturaScripts)</h3>'
+                    ],
+                    [
+                        'type' => 'switch',
+                        'label' => $this->l('Activar API REST'),
+                        'name' => 'FS_API_ENABLED',
+                        'desc' => $this->l('Consultar facturas usando API REST de FacturaScripts'),
+                        'is_bool' => true,
+                        'values' => [
+                            ['id' => 'api_on', 'value' => 1, 'label' => $this->l('Sí')],
+                            ['id' => 'api_off', 'value' => 0, 'label' => $this->l('No')]
+                        ]
+                    ],
+                    [
+                        'type' => 'text',
+                        'label' => $this->l('URL API FacturaScripts'),
+                        'name' => 'FS_API_URL',
+                        'desc' => $this->l('URL base de FacturaScripts (ej: https://mesascomedor.es)'),
+                        'size' => 50
+                    ],
+                    [
+                        'type' => 'text',
+                        'label' => $this->l('API Key'),
+                        'name' => 'FS_API_KEY',
+                        'desc' => $this->l('Crear en FacturaScripts: Panel Control > Claves API > Nueva'),
                         'size' => 50
                     ],
                     [
                         'type' => 'text',
                         'label' => $this->l('Formato PDF'),
                         'name' => 'FS_PDF_FORMAT',
-                        'desc' => $this->l('ID del formato (dejar 0 para formato por defecto)'),
+                        'desc' => $this->l('ID del formato de impresión (0 = formato por defecto)'),
                         'size' => 10
-                    ],
-                    [
-                        'type' => 'switch',
-                        'label' => $this->l('Activar Webhooks'),
-                        'name' => 'FS_WEBHOOK_ENABLED',
-                        'desc' => $this->l('Enviar webhooks cuando se crea/actualiza pedido'),
-                        'is_bool' => true,
-                        'values' => [
-                            ['id' => 'active_on', 'value' => 1, 'label' => $this->l('Sí')],
-                            ['id' => 'active_off', 'value' => 0, 'label' => $this->l('No')]
-                        ]
                     ]
                 ],
                 'submit' => [
@@ -288,10 +320,14 @@ class FsFacturaScripts extends Module
 
         $helper->tpl_vars = [
             'fields_value' => [
-                'FS_FACTURASCRIPTS_URL' => Configuration::get('FS_FACTURASCRIPTS_URL'),
-                'FS_FACTURASCRIPTS_API_KEY' => Configuration::get('FS_FACTURASCRIPTS_API_KEY'),
-                'FS_FACTURASCRIPTS_TOKEN' => Configuration::get('FS_FACTURASCRIPTS_TOKEN'),
+                // Webhooks
                 'FS_WEBHOOK_ENABLED' => Configuration::get('FS_WEBHOOK_ENABLED'),
+                'FS_WEBHOOK_URL' => Configuration::get('FS_WEBHOOK_URL'),
+                'FS_WEBHOOK_TOKEN' => Configuration::get('FS_WEBHOOK_TOKEN'),
+                // API REST
+                'FS_API_ENABLED' => Configuration::get('FS_API_ENABLED'),
+                'FS_API_URL' => Configuration::get('FS_API_URL'),
+                'FS_API_KEY' => Configuration::get('FS_API_KEY'),
                 'FS_PDF_FORMAT' => Configuration::get('FS_PDF_FORMAT', 0)
             ],
             'languages' => $this->context->controller->getLanguages(),
@@ -306,11 +342,15 @@ class FsFacturaScripts extends Module
      */
     private function syncOrdersFromAPI()
     {
-        $fs_url = Configuration::get('FS_FACTURASCRIPTS_URL');
-        $api_key = Configuration::get('FS_FACTURASCRIPTS_API_KEY');
+        if (!Configuration::get('FS_API_ENABLED')) {
+            return ['error' => 'API REST no está activada'];
+        }
+
+        $fs_url = Configuration::get('FS_API_URL');
+        $api_key = Configuration::get('FS_API_KEY');
 
         if (empty($fs_url) || empty($api_key)) {
-            return ['error' => 'URL o API Key no configurados'];
+            return ['error' => 'URL API o API Key no configurados'];
         }
 
         // Llamar API REST: /api/3/albaranescli
@@ -422,8 +462,8 @@ class FsFacturaScripts extends Module
 
     private function sendWebhookToFacturaScripts($order)
     {
-        $fs_url = Configuration::get('FS_FACTURASCRIPTS_URL');
-        $fs_token = Configuration::get('FS_FACTURASCRIPTS_TOKEN');
+        $fs_url = Configuration::get('FS_WEBHOOK_URL');
+        $fs_token = Configuration::get('FS_WEBHOOK_TOKEN');
 
         if (empty($fs_url) || empty($fs_token)) {
             return;
@@ -535,8 +575,8 @@ class FsFacturaScripts extends Module
      */
     private function getDownloadUrlAPI($factura_id)
     {
-        $fs_url = Configuration::get('FS_FACTURASCRIPTS_URL');
-        $api_key = Configuration::get('FS_FACTURASCRIPTS_API_KEY');
+        $fs_url = Configuration::get('FS_API_URL');
+        $api_key = Configuration::get('FS_API_KEY');
         $pdf_format = Configuration::get('FS_PDF_FORMAT', 0);
 
         $url = rtrim($fs_url, '/') . '/api/3/exportarFacturaCliente/' . $factura_id . '?type=PDF&Token=' . urlencode($api_key);
