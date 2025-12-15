@@ -48,6 +48,9 @@ class PrestashopConfig extends ModelClass
     /** @var string */
     public $webhook_token;
 
+    /** @var string */
+    public $lang_iso;
+
     public static function primaryColumn(): string
     {
         return 'id';
@@ -67,6 +70,7 @@ class PrestashopConfig extends ModelClass
         $this->import_since_date = ''; // Fecha fija desde la que siempre buscar
         $this->use_ws_key_param = false; // Por defecto, usar Basic Auth
         $this->webhook_enabled = false;
+        $this->lang_iso = 'es'; // Idioma por defecto: Español
         $this->generateWebhookToken(); // Genera y asigna el token automáticamente
     }
 

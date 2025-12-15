@@ -609,9 +609,18 @@ class ProductsDownload
      */
     private function extractMultilangField(\SimpleXMLElement $field): string
     {
+        $langIso = $this->config->lang_iso ?: 'es'; // Idioma configurado, por defecto español
+
         if (isset($field->language)) {
-            // Si hay múltiples idiomas, tomar el primero
+            // Si hay múltiples idiomas, buscar el idioma configurado
             if (is_array($field->language) || $field->language instanceof \Traversable) {
+                // Primero intentar encontrar el idioma configurado
+                foreach ($field->language as $lang) {
+                    if (isset($lang['id']) && strpos((string)$lang['id'], $langIso) !== false) {
+                        return (string)$lang;
+                    }
+                }
+                // Si no se encuentra, tomar el primero disponible
                 foreach ($field->language as $lang) {
                     return (string)$lang;
                 }

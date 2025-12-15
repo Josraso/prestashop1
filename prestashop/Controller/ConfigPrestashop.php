@@ -155,6 +155,7 @@ class ConfigPrestashop extends Controller
         $this->config->use_ws_key_param = (bool)$this->request->request->get('use_ws_key_param', false);
         $this->config->import_since_id = (int)$this->request->request->get('import_since_id', 0);
         $this->config->import_since_date = $this->request->request->get('import_since_date', '');
+        $this->config->lang_iso = $this->request->request->get('lang_iso', 'es');
 
         // Guardar estados seleccionados
         $estadosSeleccionados = $this->request->request->all()['estados'] ?? [];
