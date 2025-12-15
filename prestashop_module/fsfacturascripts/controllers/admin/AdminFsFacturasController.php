@@ -51,6 +51,13 @@ class AdminFsFacturasController extends ModuleAdminController
                 'title' => 'Actualizado',
                 'type' => 'datetime',
                 'align' => 'right'
+            ],
+            'download' => [
+                'title' => 'Descargar PDF',
+                'align' => 'center',
+                'callback' => 'displayDownloadLink',
+                'orderby' => false,
+                'search' => false
             ]
         ];
 
@@ -67,11 +74,7 @@ class AdminFsFacturasController extends ModuleAdminController
 
     public function renderList()
     {
-        // Añadir botón de descarga personalizado
-        $this->addRowActionSkipList('download', []);
-
-        // NO añadir acciones que hagan clicable la fila
-
+        // NO añadir acciones de fila que hagan clicable toda la fila
         $total = $this->getRecordsCount();
 
         $helper = '<div class="panel">
