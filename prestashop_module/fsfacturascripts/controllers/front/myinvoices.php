@@ -15,26 +15,28 @@ class FsFacturaScriptsMyInvoicesModuleFrontController extends ModuleFrontControl
 
         $customer = $this->context->customer;
 
-        // Obtener pedidos del cliente
+        // Obtener TODOS los pedidos del cliente (tengan o no factura)
         $orders = Order::getCustomerOrders($customer->id);
         $invoices_data = [];
 
         foreach ($orders as $order) {
-            // Buscar factura asociada
+            // Buscar factura asociada (puede o no existir)
             $sql = 'SELECT * FROM ' . _DB_PREFIX_ . 'fs_facturascripts
                     WHERE id_order = ' . (int)$order['id_order'];
             $fs_data = Db::getInstance()->getRow($sql);
 
-            if ($fs_data && !empty($fs_data['fs_factura_id'])) {
-                $invoices_data[] = [
-                    'order_reference' => $order['reference'],
-                    'date_add' => $order['date_add'],
-                    'total_paid' => $order['total_paid'],
-                    'fs_factura_code' => $fs_data['fs_factura_code'],
-                    'fs_factura_id' => $fs_data['fs_factura_id'],
-                    'download_url' => $this->getDownloadUrl($fs_data['fs_factura_id'])
-                ];
-            }
+            // Añadir TODOS los pedidos, tengan o no factura
+            $invoices_data[] = [
+                'order_reference' => $order['reference'],
+                'date_add' => $order['date_add'],
+                'total_paid' => $order['total_paid'],
+                'has_invoice' => ($fs_data && !empty($fs_data['fs_factura_id'])),
+                'fs_factura_code' => $fs_data ? $fs_data['fs_factura_code'] : null,
+                'fs_factura_id' => $fs_data ? $fs_data['fs_factura_id'] : null,
+                'download_url' => ($fs_data && !empty($fs_data['fs_factura_id']))
+                    ? $this->getDownloadUrl($fs_data['fs_factura_id'])
+                    : null
+            ];
         }
 
         $this->context->smarty->assign([

@@ -18,7 +18,7 @@ class FsFacturaScripts extends Module
     {
         $this->name = 'fsfacturascripts';
         $this->tab = 'billing_invoicing';
-        $this->version = '3.0.9';
+        $this->version = '3.1.0';
         $this->author = 'FacturaScripts';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -511,13 +511,26 @@ class FsFacturaScripts extends Module
             return;
         }
 
+        // Obtener fecha del estado actual desde el historial
+        $sql = 'SELECT oh.date_add as state_date
+                FROM ' . _DB_PREFIX_ . 'order_history oh
+                WHERE oh.id_order = ' . (int)$order->id . '
+                AND oh.id_order_state = ' . (int)$order->getCurrentState() . '
+                ORDER BY oh.date_add DESC, oh.id_order_history DESC
+                LIMIT 1';
+
+        $state_history = Db::getInstance()->getRow($sql);
+        $state_date = $state_history ? $state_history['state_date'] : $order->date_add;
+
         $webhook_url = rtrim($fs_url, '/') . '/WebhookPrestashop?token=' . $fs_token;
         $payload = [
             'order_id' => $order->id,
             'order_reference' => $order->reference,
             'current_state' => $order->getCurrentState(),
+            'current_state_date' => $state_date,  // NUEVA: Fecha del estado actual
             'total_paid' => $order->total_paid,
-            'id_customer' => $order->id_customer
+            'id_customer' => $order->id_customer,
+            'date_add' => $order->date_add  // Fecha de creación del pedido
         ];
 
         try {

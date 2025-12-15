@@ -21,7 +21,7 @@ class FsFacturaScriptsDownloadpdfModuleFrontController extends ModuleFrontContro
         // Verificar que el cliente tenga acceso a esta factura
         $customer_id = $this->context->customer->id;
 
-        $sql = 'SELECT f.fs_factura_id, o.id_customer
+        $sql = 'SELECT f.fs_factura_id, f.fs_factura_code, o.id_customer
                 FROM ' . _DB_PREFIX_ . 'fs_facturascripts f
                 INNER JOIN ' . _DB_PREFIX_ . 'orders o ON f.id_order = o.id_order
                 WHERE f.fs_factura_id = ' . (int)$factura_id . '
@@ -72,9 +72,14 @@ class FsFacturaScriptsDownloadpdfModuleFrontController extends ModuleFrontContro
             die('Error al descargar factura: HTTP ' . $http_code);
         }
 
+        // Usar el código de factura como nombre del archivo (ej: FAC2025A641.pdf)
+        $filename = !empty($factura['fs_factura_code'])
+            ? $factura['fs_factura_code'] . '.pdf'
+            : 'factura_' . $factura_id . '.pdf';
+
         // Servir el PDF
         header('Content-Type: application/pdf');
-        header('Content-Disposition: attachment; filename="factura_' . $factura_id . '.pdf"');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
         header('Content-Length: ' . strlen($pdf_content));
         header('Cache-Control: private, max-age=0, must-revalidate');
         header('Pragma: public');

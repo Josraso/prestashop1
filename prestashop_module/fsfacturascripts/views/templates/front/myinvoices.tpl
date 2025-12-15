@@ -25,12 +25,22 @@
                             <td>{$invoice.order_reference|escape:'html':'UTF-8'}</td>
                             <td>{$invoice.date_add|date_format:"%d/%m/%Y"}</td>
                             <td>{$invoice.total_paid|string_format:"%.2f"} €</td>
-                            <td><strong>{$invoice.fs_factura_code|escape:'html':'UTF-8'}</strong></td>
                             <td>
-                                <a href="{$invoice.download_url|escape:'html':'UTF-8'}" target="_blank" class="btn btn-primary btn-sm">
-                                    <i class="material-icons">&#xE884;</i>
-                                    {l s='Download PDF' mod='fsfacturascripts'}
-                                </a>
+                                {if $invoice.has_invoice}
+                                    <strong>{$invoice.fs_factura_code|escape:'html':'UTF-8'}</strong>
+                                {else}
+                                    <span class="badge badge-warning">{l s='Pendiente de generar' mod='fsfacturascripts'}</span>
+                                {/if}
+                            </td>
+                            <td>
+                                {if $invoice.has_invoice}
+                                    <a href="{$invoice.download_url|escape:'html':'UTF-8'}" target="_blank" class="btn btn-primary btn-sm">
+                                        <i class="material-icons">&#xE884;</i>
+                                        {l s='Download PDF' mod='fsfacturascripts'}
+                                    </a>
+                                {else}
+                                    <span class="text-muted">{l s='Pendiente de generar' mod='fsfacturascripts'}</span>
+                                {/if}
                             </td>
                         </tr>
                     {/foreach}

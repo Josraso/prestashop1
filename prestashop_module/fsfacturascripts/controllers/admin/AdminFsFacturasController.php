@@ -58,22 +58,19 @@ class AdminFsFacturasController extends ModuleAdminController
 
         $this->_select = 'a.*';
         $this->_where = '';
-        $this->_orderBy = 'id_fs_facturascripts';
+        $this->_orderBy = 'a.id_fs_facturascripts';
         $this->_orderWay = 'DESC';
 
-        $this->bulk_actions = [
-            'delete' => [
-                'text' => $this->l('Eliminar seleccionados'),
-                'icon' => 'icon-trash',
-                'confirm' => $this->l('¿Eliminar elementos seleccionados?')
-            ]
-        ];
+        // No permitir acciones de eliminar
+        $this->bulk_actions = [];
     }
 
     public function renderList()
     {
-        // Eliminar acciones que causan problemas
-        $this->addRowAction('delete');
+        // Añadir botón de descarga personalizado
+        $this->addRowActionSkipList('download', []);
+
+        // NO añadir acciones que hagan clicable la fila
 
         $total = $this->getRecordsCount();
 
@@ -99,39 +96,29 @@ class AdminFsFacturasController extends ModuleAdminController
         return (int)Db::getInstance()->getValue($sql);
     }
 
-    public function processBulkDelete()
+    public function displayDownloadLink($token, $id)
     {
-        if (!is_array($this->boxes) || !count($this->boxes)) {
-            $this->errors[] = Tools::displayError('You must select at least one element to delete.');
-            return false;
+        // Obtener datos de la factura
+        $sql = 'SELECT fs_factura_id, fs_factura_code FROM ' . _DB_PREFIX_ . 'fs_facturascripts WHERE id_fs_facturascripts = ' . (int)$id;
+        $row = Db::getInstance()->getRow($sql);
+
+        if (!$row || empty($row['fs_factura_id'])) {
+            return '<span class="text-muted">Sin factura</span>';
         }
 
-        foreach ($this->boxes as $id) {
-            $sql = 'DELETE FROM ' . _DB_PREFIX_ . 'fs_facturascripts WHERE id_fs_facturascripts = ' . (int)$id;
-            Db::getInstance()->execute($sql);
+        // URL de descarga usando el endpoint del API
+        $fs_url = Configuration::get('FS_API_URL');
+        $api_key = Configuration::get('FS_API_KEY');
+        $pdf_format = Configuration::get('FS_PDF_FORMAT', 0);
+
+        $download_url = rtrim($fs_url, '/') . '/api/3/exportarFacturaCliente/' . $row['fs_factura_id'] . '?type=PDF&Token=' . urlencode($api_key);
+
+        if ($pdf_format > 0) {
+            $download_url .= '&format=' . $pdf_format;
         }
 
-        $this->confirmations[] = $this->l('The selection has been successfully deleted.');
-        return true;
-    }
-
-    public function processDelete()
-    {
-        $id = (int)Tools::getValue('id_fs_facturascripts');
-
-        if (!$id) {
-            $this->errors[] = Tools::displayError('An error occurred while deleting the object.');
-            return false;
-        }
-
-        $sql = 'DELETE FROM ' . _DB_PREFIX_ . 'fs_facturascripts WHERE id_fs_facturascripts = ' . (int)$id;
-
-        if (Db::getInstance()->execute($sql)) {
-            Tools::redirectAdmin(self::$currentIndex . '&conf=1&token=' . $this->token);
-        } else {
-            $this->errors[] = Tools::displayError('An error occurred while deleting the object.');
-        }
-
-        return false;
+        return '<a href="' . htmlspecialchars($download_url) . '" target="_blank" class="btn btn-default btn-sm">
+            <i class="icon-download"></i> Descargar ' . htmlspecialchars($row['fs_factura_code']) . '
+        </a>';
     }
 }
