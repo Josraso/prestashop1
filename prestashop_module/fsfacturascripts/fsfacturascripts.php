@@ -1,6 +1,7 @@
 <?php
 /**
- * FacturaScripts Integration Module
+ * FacturaScripts Integration Module v3.0.0
+ * Usa API REST de FacturaScripts directamente
  *
  * @author    FacturaScripts Team
  * @copyright Copyright (c) 2025 FacturaScripts
@@ -17,7 +18,7 @@ class FsFacturaScripts extends Module
     {
         $this->name = 'fsfacturascripts';
         $this->tab = 'billing_invoicing';
-        $this->version = '1.0.0';
+        $this->version = '3.0.0';
         $this->author = 'FacturaScripts';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -28,48 +29,65 @@ class FsFacturaScripts extends Module
 
         parent::__construct();
 
-        $this->displayName = $this->l('FacturaScripts Integration');
-        $this->description = $this->l('Integración con FacturaScripts: webhooks en tiempo real y descarga de facturas.');
+        $this->displayName = $this->l('FacturaScripts Integration v3');
+        $this->description = $this->l('Integración con FacturaScripts usando API REST: webhooks + consulta de facturas.');
         $this->confirmUninstall = $this->l('¿Estás seguro de que quieres desinstalar este módulo?');
     }
 
-    /**
-     * Instalación del módulo
-     */
     public function install()
     {
         if (!parent::install()) {
             return false;
         }
 
-        // Crear tabla para guardar relación pedido → factura
+        // Crear tabla
         if (!$this->createTables()) {
             return false;
         }
 
-        // Registrar hooks (SOLO displayAdminOrder para evitar duplicados)
+        // Instalar tab
+        if (!$this->installTab()) {
+            return false;
+        }
+
+        // Registrar hooks
         return $this->registerHook('actionOrderStatusPostUpdate') &&
                $this->registerHook('actionValidateOrder') &&
-               $this->registerHook('displayAdminOrder') &&
-               $this->registerHook('displayAdminOrdersListAfter') &&
                $this->registerHook('displayOrderDetail') &&
                $this->registerHook('displayCustomerAccount');
     }
 
-    /**
-     * Desinstalación del módulo
-     */
     public function uninstall()
     {
-        // Eliminar tabla
+        $this->uninstallTab();
         $this->dropTables();
-
         return parent::uninstall();
     }
 
-    /**
-     * Crear tablas en la base de datos
-     */
+    private function installTab()
+    {
+        $tab = new Tab();
+        $tab->active = 1;
+        $tab->class_name = 'AdminFsFacturas';
+        $tab->name = [];
+        foreach (Language::getLanguages(true) as $lang) {
+            $tab->name[$lang['id_lang']] = 'Facturas FacturaScripts';
+        }
+        $tab->id_parent = (int)Tab::getIdFromClassName('AdminParentOrders');
+        $tab->module = $this->name;
+        return $tab->add();
+    }
+
+    private function uninstallTab()
+    {
+        $id_tab = (int)Tab::getIdFromClassName('AdminFsFacturas');
+        if ($id_tab) {
+            $tab = new Tab($id_tab);
+            return $tab->delete();
+        }
+        return true;
+    }
+
     private function createTables()
     {
         $sql = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'fs_facturascripts` (
@@ -88,12 +106,28 @@ class FsFacturaScripts extends Module
             KEY `order_reference` (`order_reference`)
         ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8;';
 
-        return Db::getInstance()->execute($sql);
+        $result = Db::getInstance()->execute($sql);
+
+        if (!$result) {
+            PrestaShopLogger::addLog(
+                'FacturaScripts: Error al crear tabla - ' . Db::getInstance()->getMsgError(),
+                3,
+                null,
+                'Module',
+                0,
+                true
+            );
+        }
+
+        return $result;
     }
 
-    /**
-     * Eliminar tablas de la base de datos
-     */
+    private function tableExists()
+    {
+        $sql = 'SHOW TABLES LIKE "' . _DB_PREFIX_ . 'fs_facturascripts"';
+        return (bool)Db::getInstance()->executeS($sql);
+    }
+
     private function dropTables()
     {
         $sql = 'DROP TABLE IF EXISTS `' . _DB_PREFIX_ . 'fs_facturascripts`';
@@ -101,41 +135,91 @@ class FsFacturaScripts extends Module
     }
 
     /**
-     * Página de configuración del módulo
+     * Configuración del módulo
      */
     public function getContent()
     {
         $output = '';
 
-        // Procesar formulario
+        // Crear tabla manualmente
+        if (Tools::isSubmit('submitCreateTable')) {
+            if ($this->tableExists()) {
+                $output .= $this->displayWarning($this->l('La tabla ya existe'));
+            } else {
+                if ($this->createTables()) {
+                    $output .= $this->displayConfirmation($this->l('Tabla creada correctamente'));
+                } else {
+                    $output .= $this->displayError($this->l('Error al crear tabla. Revisa logs.'));
+                }
+            }
+        }
+
+        // Sincronizar pedidos históricos usando API
+        if (Tools::isSubmit('submitSyncOrders')) {
+            if (!$this->tableExists()) {
+                $output .= $this->displayError($this->l('ERROR: Tabla no existe. Crea la tabla primero.'));
+            } else {
+                $result = $this->syncOrdersFromAPI();
+
+                if (is_array($result) && isset($result['error'])) {
+                    $output .= $this->displayError($this->l('Error: ') . $result['error']);
+                } elseif (is_numeric($result)) {
+                    if ($result == 0) {
+                        $output .= $this->displayWarning($this->l('No se encontraron pedidos para sincronizar.'));
+                    } else {
+                        $output .= $this->displayConfirmation($this->l('✓ Sincronizados ') . $result . $this->l(' pedidos'));
+                    }
+                } else {
+                    $output .= $this->displayError($this->l('Error inesperado'));
+                }
+            }
+        }
+
+        // Guardar configuración
         if (Tools::isSubmit('submitFsFacturaScriptsConfig')) {
             Configuration::updateValue('FS_FACTURASCRIPTS_URL', Tools::getValue('FS_FACTURASCRIPTS_URL'));
+            Configuration::updateValue('FS_FACTURASCRIPTS_API_KEY', Tools::getValue('FS_FACTURASCRIPTS_API_KEY'));
             Configuration::updateValue('FS_FACTURASCRIPTS_TOKEN', Tools::getValue('FS_FACTURASCRIPTS_TOKEN'));
             Configuration::updateValue('FS_WEBHOOK_ENABLED', (int)Tools::getValue('FS_WEBHOOK_ENABLED'));
+            Configuration::updateValue('FS_PDF_FORMAT', (int)Tools::getValue('FS_PDF_FORMAT'));
 
-            $output .= $this->displayConfirmation($this->l('Configuración guardada correctamente'));
+            $output .= $this->displayConfirmation($this->l('Configuración guardada'));
         }
 
         return $output . $this->displayForm();
     }
 
-    /**
-     * Formulario de configuración
-     */
-    public function displayForm()
+    private function displayForm()
     {
+        $tableStatus = $this->tableExists()
+            ? '<span style="color: green;">✓ Tabla OK</span>'
+            : '<span style="color: red;">✗ Tabla NO existe</span>';
+
         $fields_form = [
             'form' => [
                 'legend' => [
-                    'title' => $this->l('Configuración FacturaScripts'),
+                    'title' => $this->l('Configuración FacturaScripts v3 (API REST)'),
                     'icon' => 'icon-cogs'
                 ],
+                'description' => '<div class="alert alert-info">
+                    <strong>Estado BD:</strong> ' . $tableStatus . '<br>
+                    <strong>Modo:</strong> Usa API REST de FacturaScripts<br>
+                    <a href="https://facturascripts.com/publicaciones/la-api-rest-de-facturascripts-912" target="_blank">📖 Documentación API</a>
+                </div>',
                 'input' => [
                     [
                         'type' => 'text',
                         'label' => $this->l('URL de FacturaScripts'),
                         'name' => 'FS_FACTURASCRIPTS_URL',
-                        'desc' => $this->l('URL completa de tu instalación de FacturaScripts (ej: https://tudominio.com)'),
+                        'desc' => $this->l('URL completa (ej: https://tudominio.com)'),
+                        'required' => true,
+                        'size' => 50
+                    ],
+                    [
+                        'type' => 'text',
+                        'label' => $this->l('API Key'),
+                        'name' => 'FS_FACTURASCRIPTS_API_KEY',
+                        'desc' => $this->l('Crear en: Panel Control > Claves API'),
                         'required' => true,
                         'size' => 50
                     ],
@@ -143,15 +227,22 @@ class FsFacturaScripts extends Module
                         'type' => 'text',
                         'label' => $this->l('Token Webhook'),
                         'name' => 'FS_FACTURASCRIPTS_TOKEN',
-                        'desc' => $this->l('Token de seguridad generado en FacturaScripts > Configuración PrestaShop > Webhooks'),
+                        'desc' => $this->l('Token para webhooks (copiar de plugin FacturaScripts)'),
                         'required' => true,
                         'size' => 50
+                    ],
+                    [
+                        'type' => 'text',
+                        'label' => $this->l('Formato PDF'),
+                        'name' => 'FS_PDF_FORMAT',
+                        'desc' => $this->l('ID del formato (dejar 0 para formato por defecto)'),
+                        'size' => 10
                     ],
                     [
                         'type' => 'switch',
                         'label' => $this->l('Activar Webhooks'),
                         'name' => 'FS_WEBHOOK_ENABLED',
-                        'desc' => $this->l('Enviar webhooks automáticos a FacturaScripts cuando se crea/actualiza un pedido'),
+                        'desc' => $this->l('Enviar webhooks cuando se crea/actualiza pedido'),
                         'is_bool' => true,
                         'values' => [
                             ['id' => 'active_on', 'value' => 1, 'label' => $this->l('Sí')],
@@ -162,6 +253,22 @@ class FsFacturaScripts extends Module
                 'submit' => [
                     'title' => $this->l('Guardar'),
                     'class' => 'btn btn-default pull-right'
+                ],
+                'buttons' => [
+                    [
+                        'type' => 'submit',
+                        'title' => $this->l('Crear tabla'),
+                        'icon' => 'process-icon-database',
+                        'class' => 'btn btn-warning pull-right',
+                        'name' => 'submitCreateTable'
+                    ],
+                    [
+                        'type' => 'submit',
+                        'title' => $this->l('Sincronizar pedidos históricos'),
+                        'icon' => 'process-icon-refresh',
+                        'class' => 'btn btn-info pull-right',
+                        'name' => 'submitSyncOrders'
+                    ]
                 ]
             ]
         ];
@@ -182,8 +289,10 @@ class FsFacturaScripts extends Module
         $helper->tpl_vars = [
             'fields_value' => [
                 'FS_FACTURASCRIPTS_URL' => Configuration::get('FS_FACTURASCRIPTS_URL'),
+                'FS_FACTURASCRIPTS_API_KEY' => Configuration::get('FS_FACTURASCRIPTS_API_KEY'),
                 'FS_FACTURASCRIPTS_TOKEN' => Configuration::get('FS_FACTURASCRIPTS_TOKEN'),
-                'FS_WEBHOOK_ENABLED' => Configuration::get('FS_WEBHOOK_ENABLED')
+                'FS_WEBHOOK_ENABLED' => Configuration::get('FS_WEBHOOK_ENABLED'),
+                'FS_PDF_FORMAT' => Configuration::get('FS_PDF_FORMAT', 0)
             ],
             'languages' => $this->context->controller->getLanguages(),
             'id_language' => $this->context->language->id
@@ -193,7 +302,103 @@ class FsFacturaScripts extends Module
     }
 
     /**
-     * Hook: Cuando se crea un nuevo pedido
+     * Sincronizar pedidos históricos usando API REST de FacturaScripts
+     */
+    private function syncOrdersFromAPI()
+    {
+        $fs_url = Configuration::get('FS_FACTURASCRIPTS_URL');
+        $api_key = Configuration::get('FS_FACTURASCRIPTS_API_KEY');
+
+        if (empty($fs_url) || empty($api_key)) {
+            return ['error' => 'URL o API Key no configurados'];
+        }
+
+        // Llamar API REST: /api/3/albaranescli
+        $api_url = rtrim($fs_url, '/') . '/api/3/albaranescli';
+
+        $ch = curl_init($api_url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Token: ' . $api_key
+        ]);
+
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curl_error = curl_error($ch);
+        curl_close($ch);
+
+        if ($curl_error) {
+            return ['error' => "Error de conexión: {$curl_error}"];
+        }
+
+        if ($http_code != 200) {
+            return ['error' => "Error HTTP {$http_code}. Verifica URL y API Key"];
+        }
+
+        $albaranes = json_decode($response, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return ['error' => 'Respuesta inválida del API'];
+        }
+
+        $sincronizados = 0;
+
+        foreach ($albaranes as $albaran) {
+            // Solo procesar albaranes que tienen numero2 (referencia PrestaShop)
+            if (empty($albaran['numero2'])) {
+                continue;
+            }
+
+            // Buscar pedido en PrestaShop por referencia
+            $sql = 'SELECT id_order FROM ' . _DB_PREFIX_ . 'orders WHERE reference = "' . pSQL($albaran['numero2']) . '"';
+            $order_id = Db::getInstance()->getValue($sql);
+
+            if (!$order_id) {
+                continue;
+            }
+
+            // Verificar si ya existe
+            $exists = Db::getInstance()->getValue(
+                'SELECT id_fs_facturascripts FROM ' . _DB_PREFIX_ . 'fs_facturascripts WHERE id_order = ' . (int)$order_id
+            );
+
+            $data_insert = [
+                'id_order' => (int)$order_id,
+                'order_reference' => pSQL($albaran['numero2']),
+                'fs_albaran_id' => (int)$albaran['idalbaran'],
+                'fs_factura_id' => !empty($albaran['idfactura']) ? (int)$albaran['idfactura'] : null,
+                'fs_factura_code' => !empty($albaran['codigofactura']) ? pSQL($albaran['codigofactura']) : null,
+                'webhook_sent' => 1,
+                'webhook_response' => 'Sincronizado desde API',
+                'date_upd' => date('Y-m-d H:i:s')
+            ];
+
+            if ($exists) {
+                Db::getInstance()->update('fs_facturascripts', $data_insert, 'id_order = ' . (int)$order_id);
+            } else {
+                $data_insert['date_add'] = date('Y-m-d H:i:s');
+                Db::getInstance()->insert('fs_facturascripts', $data_insert);
+            }
+
+            $sincronizados++;
+        }
+
+        PrestaShopLogger::addLog(
+            "FacturaScripts API: Sincronizados {$sincronizados} pedidos",
+            1,
+            null,
+            'Module',
+            0,
+            true
+        );
+
+        return $sincronizados;
+    }
+
+    /**
+     * Hook: Webhook cuando se crea/actualiza pedido
      */
     public function hookActionValidateOrder($params)
     {
@@ -205,9 +410,6 @@ class FsFacturaScripts extends Module
         $this->sendWebhookToFacturaScripts($order);
     }
 
-    /**
-     * Hook: Cuando se actualiza el estado de un pedido
-     */
     public function hookActionOrderStatusPostUpdate($params)
     {
         if (!Configuration::get('FS_WEBHOOK_ENABLED')) {
@@ -218,9 +420,6 @@ class FsFacturaScripts extends Module
         $this->sendWebhookToFacturaScripts($order);
     }
 
-    /**
-     * Enviar webhook a FacturaScripts
-     */
     private function sendWebhookToFacturaScripts($order)
     {
         $fs_url = Configuration::get('FS_FACTURASCRIPTS_URL');
@@ -230,7 +429,6 @@ class FsFacturaScripts extends Module
             return;
         }
 
-        // Preparar datos del webhook
         $webhook_url = rtrim($fs_url, '/') . '/WebhookPrestashop?token=' . $fs_token;
         $payload = [
             'order_id' => $order->id,
@@ -240,26 +438,20 @@ class FsFacturaScripts extends Module
             'id_customer' => $order->id_customer
         ];
 
-        // Enviar webhook con cURL
         try {
             $ch = curl_init($webhook_url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Content-Type: application/json'
-            ]);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
             curl_setopt($ch, CURLOPT_TIMEOUT, 10);
 
             $response = curl_exec($ch);
             $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
 
-            // Guardar respuesta
             $this->saveWebhookData($order, $response, $http_code == 200);
-
         } catch (Exception $e) {
-            // Log error pero no bloquear el flujo
             PrestaShopLogger::addLog(
                 'FacturaScripts Webhook Error: ' . $e->getMessage(),
                 3,
@@ -271,9 +463,6 @@ class FsFacturaScripts extends Module
         }
     }
 
-    /**
-     * Guardar datos del webhook en BD
-     */
     private function saveWebhookData($order, $response, $success)
     {
         $response_data = json_decode($response, true);
@@ -287,7 +476,6 @@ class FsFacturaScripts extends Module
             'date_upd' => date('Y-m-d H:i:s')
         ];
 
-        // Si hay datos de albarán/factura en la respuesta, guardarlos
         if ($success && isset($response_data['albaran_id'])) {
             $data['fs_albaran_id'] = (int)$response_data['albaran_id'];
         }
@@ -296,7 +484,6 @@ class FsFacturaScripts extends Module
             $data['fs_factura_code'] = pSQL($response_data['factura_code'] ?? '');
         }
 
-        // Insertar o actualizar
         $existing = Db::getInstance()->getValue(
             'SELECT id_fs_facturascripts FROM ' . _DB_PREFIX_ . 'fs_facturascripts WHERE id_order = ' . (int)$order->id
         );
@@ -310,16 +497,7 @@ class FsFacturaScripts extends Module
     }
 
     /**
-     * Hook: displayAdminOrder - No mostrar nada
-     */
-    public function hookDisplayAdminOrder($params)
-    {
-        // No mostrar nada en la ficha del pedido
-        return '';
-    }
-
-    /**
-     * Hook: Mostrar botón en detalle del pedido (front - cuenta cliente)
+     * Hook: Mostrar botón descarga en detalle pedido
      */
     public function hookDisplayOrderDetail($params)
     {
@@ -330,7 +508,7 @@ class FsFacturaScripts extends Module
             return '';
         }
 
-        $download_url = $this->getDownloadUrl($order->reference);
+        $download_url = $this->getDownloadUrlAPI($fs_data['fs_factura_id']);
 
         $this->context->smarty->assign([
             'fs_factura_code' => $fs_data['fs_factura_code'],
@@ -340,33 +518,33 @@ class FsFacturaScripts extends Module
         return $this->display(__FILE__, 'views/templates/hook/displayOrderDetail.tpl');
     }
 
-    /**
-     * Hook: Mostrar enlace en cuenta del cliente (listado de pedidos)
-     */
     public function hookDisplayCustomerAccount($params)
     {
-        return ''; // Placeholder para futuras mejoras
+        return $this->display(__FILE__, 'views/templates/hook/displayCustomerAccount.tpl');
     }
 
-    /**
-     * Obtener datos de FacturaScripts por order_reference
-     */
     private function getFacturaScriptsData($order_reference)
     {
         $sql = 'SELECT * FROM ' . _DB_PREFIX_ . 'fs_facturascripts
                 WHERE order_reference = "' . pSQL($order_reference) . '"';
-
         return Db::getInstance()->getRow($sql);
     }
 
     /**
-     * Construir URL de descarga
+     * URL de descarga usando API REST: /api/3/exportarFacturaCliente/{id}
      */
-    private function getDownloadUrl($order_reference)
+    private function getDownloadUrlAPI($factura_id)
     {
         $fs_url = Configuration::get('FS_FACTURASCRIPTS_URL');
-        $fs_token = Configuration::get('FS_FACTURASCRIPTS_TOKEN');
+        $api_key = Configuration::get('FS_FACTURASCRIPTS_API_KEY');
+        $pdf_format = Configuration::get('FS_PDF_FORMAT', 0);
 
-        return rtrim($fs_url, '/') . '/DownloadInvoicePrestashop?token=' . $fs_token . '&order_ref=' . urlencode($order_reference);
+        $url = rtrim($fs_url, '/') . '/api/3/exportarFacturaCliente/' . $factura_id . '?type=PDF&Token=' . urlencode($api_key);
+
+        if ($pdf_format > 0) {
+            $url .= '&format=' . $pdf_format;
+        }
+
+        return $url;
     }
 }
