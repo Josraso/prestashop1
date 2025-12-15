@@ -18,7 +18,7 @@ class FsFacturaScripts extends Module
     {
         $this->name = 'fsfacturascripts';
         $this->tab = 'billing_invoicing';
-        $this->version = '3.1.1';
+        $this->version = '3.1.2';
         $this->author = 'FacturaScripts';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [

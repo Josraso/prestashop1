@@ -10,11 +10,11 @@ class AdminFsFacturasController extends ModuleAdminController
         $this->bootstrap = true;
         $this->table = 'fs_facturascripts';
         $this->identifier = 'id_fs_facturascripts';
-        $this->className = 'stdClass'; // No usamos ObjectModel
         $this->lang = false;
         $this->deleted = false;
         $this->explicitSelect = true;
         $this->allow_export = true;
+        $this->list_no_link = true; // IMPORTANTE: Evita que las filas sean clicables
 
         $this->context = Context::getContext();
 
