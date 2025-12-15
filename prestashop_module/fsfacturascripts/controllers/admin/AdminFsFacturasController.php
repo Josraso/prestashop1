@@ -106,16 +106,14 @@ class AdminFsFacturasController extends ModuleAdminController
             return '<span class="text-muted">Sin factura</span>';
         }
 
-        // URL de descarga usando el endpoint del API
-        $fs_url = Configuration::get('FS_API_URL');
-        $api_key = Configuration::get('FS_API_KEY');
-        $pdf_format = Configuration::get('FS_PDF_FORMAT', 0);
-
-        $download_url = rtrim($fs_url, '/') . '/api/3/exportarFacturaCliente/' . $row['fs_factura_id'] . '?type=PDF&Token=' . urlencode($api_key);
-
-        if ($pdf_format > 0) {
-            $download_url .= '&format=' . $pdf_format;
-        }
+        // URL usando controlador proxy para admin
+        $context = Context::getContext();
+        $download_url = $context->link->getModuleLink(
+            'fsfacturascripts',
+            'downloadadmin',
+            ['id' => $row['fs_factura_id']],
+            true
+        );
 
         return '<a href="' . htmlspecialchars($download_url) . '" target="_blank" class="btn btn-default btn-sm">
             <i class="icon-download"></i> Descargar ' . htmlspecialchars($row['fs_factura_code']) . '
