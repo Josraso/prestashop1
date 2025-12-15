@@ -18,7 +18,7 @@ class FsFacturaScripts extends Module
     {
         $this->name = 'fsfacturascripts';
         $this->tab = 'billing_invoicing';
-        $this->version = '3.0.1';
+        $this->version = '3.0.3';
         $this->author = 'FacturaScripts';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -353,11 +353,11 @@ class FsFacturaScripts extends Module
             return ['error' => 'URL API o API Key no configurados'];
         }
 
-        // Llamar API REST: /api/3/albaranescli
-        $api_url = rtrim($fs_url, '/') . '/api/3/albaranescli';
+        // Llamar API REST: /api/3/albaranescli?Token=xxx
+        $api_url = rtrim($fs_url, '/') . '/api/3/albaranescli?Token=' . urlencode($api_key);
 
         PrestaShopLogger::addLog(
-            "FacturaScripts API: Intentando conectar a {$api_url}",
+            "FacturaScripts API: Intentando conectar a " . rtrim($fs_url, '/') . '/api/3/albaranescli?Token=***',
             1,
             null,
             'Module',
@@ -369,9 +369,6 @@ class FsFacturaScripts extends Module
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Token: ' . $api_key
-        ]);
 
         $response = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -391,17 +388,21 @@ class FsFacturaScripts extends Module
             return ['error' => "Error de conexión: {$curl_error}"];
         }
 
+        // Intentar decodificar la respuesta primero para obtener mensaje de error específico
+        $data_error = json_decode($response, true);
+
         if ($http_code == 404) {
-            return ['error' => "Error 404: API no encontrada en {$api_url}. Verifica que el API esté activada en FacturaScripts: Panel Control > Activar API"];
+            return ['error' => "Error 404: Endpoint no encontrado. Verifica que FacturaScripts esté actualizado y el API activada en: Panel Control > Activar API"];
         }
 
-        if ($http_code == 403) {
-            return ['error' => "Error 403: API Key inválida o sin permisos. Verifica la clave en: Panel Control > Claves API"];
+        if ($http_code == 403 || ($http_code == 200 && isset($data_error['status']) && $data_error['status'] === 'error')) {
+            $msg = isset($data_error['message']) ? $data_error['message'] : 'API Key inválida';
+            return ['error' => "Error de autenticación: {$msg}. Verifica que la API Key sea correcta y tenga 'Acceso completo' en: Panel Control > Claves API"];
         }
 
         if ($http_code != 200) {
             PrestaShopLogger::addLog(
-                "FacturaScripts API: Respuesta completa - " . substr($response, 0, 500),
+                "FacturaScripts API: HTTP {$http_code} - Respuesta: " . substr($response, 0, 500),
                 3,
                 null,
                 'Module',
