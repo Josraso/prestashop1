@@ -353,11 +353,11 @@ class FsFacturaScripts extends Module
             return ['error' => 'URL API o API Key no configurados'];
         }
 
-        // Llamar API REST: /api/3/albaranescli?Token=xxx
-        $api_url = rtrim($fs_url, '/') . '/api/3/albaranescli?Token=' . urlencode($api_key);
+        // Llamar API REST: /api/3/albaranescli con Token en HEADER
+        $api_url = rtrim($fs_url, '/') . '/api/3/albaranescli';
 
         PrestaShopLogger::addLog(
-            "FacturaScripts API: Intentando conectar a " . rtrim($fs_url, '/') . '/api/3/albaranescli?Token=***',
+            "FacturaScripts API: Llamando a {$api_url} con Token en header",
             1,
             null,
             'Module',
@@ -369,6 +369,10 @@ class FsFacturaScripts extends Module
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Token: ' . $api_key,
+            'Accept: application/json'
+        ]);
 
         $response = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -607,6 +611,7 @@ class FsFacturaScripts extends Module
 
     /**
      * URL de descarga usando API REST: /api/3/exportarFacturaCliente/{id}
+     * NOTA: Esta URL requiere el Token como parámetro GET porque es un enlace directo
      */
     private function getDownloadUrlAPI($factura_id)
     {
@@ -614,6 +619,7 @@ class FsFacturaScripts extends Module
         $api_key = Configuration::get('FS_API_KEY');
         $pdf_format = Configuration::get('FS_PDF_FORMAT', 0);
 
+        // Para descargas directas (enlaces), el Token debe ir en URL
         $url = rtrim($fs_url, '/') . '/api/3/exportarFacturaCliente/' . $factura_id . '?type=PDF&Token=' . urlencode($api_key);
 
         if ($pdf_format > 0) {
