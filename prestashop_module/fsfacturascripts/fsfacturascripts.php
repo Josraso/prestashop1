@@ -18,7 +18,7 @@ class FsFacturaScripts extends Module
     {
         $this->name = 'fsfacturascripts';
         $this->tab = 'billing_invoicing';
-        $this->version = '3.0.6';
+        $this->version = '3.0.7';
         $this->author = 'FacturaScripts';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -353,11 +353,11 @@ class FsFacturaScripts extends Module
             return ['error' => 'URL API o API Key no configurados'];
         }
 
-        // Llamar al endpoint correcto: /api/3/albaranclientes (NO albaranescli)
-        $api_url = rtrim($fs_url, '/') . '/api/3/albaranclientes';
+        // Llamar al endpoint de FACTURAS (no albaranes): /api/3/facturaclientes
+        $api_url = rtrim($fs_url, '/') . '/api/3/facturaclientes';
 
         PrestaShopLogger::addLog(
-            "FacturaScripts API: Obteniendo albaranes desde {$api_url}",
+            "FacturaScripts API: Obteniendo FACTURAS desde {$api_url}",
             1,
             null,
             'Module',
@@ -393,7 +393,7 @@ class FsFacturaScripts extends Module
         }
 
         if ($http_code == 404) {
-            return ['error' => "Error 404: Endpoint 'albaranclientes' no encontrado. URL: {$api_url}"];
+            return ['error' => "Error 404: Endpoint 'facturaclientes' no encontrado. URL: {$api_url}"];
         }
 
         if ($http_code == 401) {
@@ -404,26 +404,26 @@ class FsFacturaScripts extends Module
             return ['error' => "Error HTTP {$http_code}. Respuesta: " . substr($response, 0, 200)];
         }
 
-        $albaranes = json_decode($response, true);
+        $facturas = json_decode($response, true);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
             return ['error' => 'Error al decodificar JSON: ' . json_last_error_msg()];
         }
 
-        if (!is_array($albaranes)) {
-            return ['error' => 'La respuesta no es un array. Tipo: ' . gettype($albaranes)];
+        if (!is_array($facturas)) {
+            return ['error' => 'La respuesta no es un array. Tipo: ' . gettype($facturas)];
         }
 
         $sincronizados = 0;
 
-        foreach ($albaranes as $albaran) {
-            // Solo procesar albaranes que tienen numero2 (referencia PrestaShop)
-            if (empty($albaran['numero2'])) {
+        foreach ($facturas as $factura) {
+            // Solo procesar facturas que tienen numero2 (referencia PrestaShop)
+            if (empty($factura['numero2'])) {
                 continue;
             }
 
             // Buscar pedido en PrestaShop por referencia
-            $sql = 'SELECT id_order FROM ' . _DB_PREFIX_ . 'orders WHERE reference = "' . pSQL($albaran['numero2']) . '"';
+            $sql = 'SELECT id_order FROM ' . _DB_PREFIX_ . 'orders WHERE reference = "' . pSQL($factura['numero2']) . '"';
             $order_id = Db::getInstance()->getValue($sql);
 
             if (!$order_id) {
@@ -437,12 +437,12 @@ class FsFacturaScripts extends Module
 
             $data_insert = [
                 'id_order' => (int)$order_id,
-                'order_reference' => pSQL($albaran['numero2']),
-                'fs_albaran_id' => (int)$albaran['idalbaran'],
-                'fs_factura_id' => !empty($albaran['idfactura']) ? (int)$albaran['idfactura'] : null,
-                'fs_factura_code' => !empty($albaran['codigofactura']) ? pSQL($albaran['codigofactura']) : null,
+                'order_reference' => pSQL($factura['numero2']),
+                'fs_albaran_id' => null, // No usamos albaranes, solo facturas
+                'fs_factura_id' => (int)$factura['idfactura'],
+                'fs_factura_code' => pSQL($factura['codigo']),
                 'webhook_sent' => 1,
-                'webhook_response' => 'Sincronizado desde API',
+                'webhook_response' => 'Sincronizado desde API (facturas)',
                 'date_upd' => date('Y-m-d H:i:s')
             ];
 
@@ -457,7 +457,7 @@ class FsFacturaScripts extends Module
         }
 
         PrestaShopLogger::addLog(
-            "FacturaScripts API: ✓ Sincronizados {$sincronizados} pedidos de " . count($albaranes) . " albaranes encontrados",
+            "FacturaScripts API: ✓ Sincronizados {$sincronizados} pedidos de " . count($facturas) . " facturas encontradas",
             1,
             null,
             'Module',
