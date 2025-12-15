@@ -1,0 +1,41 @@
+/**
+ * Admin CSS para FacturaScripts module
+ */
+
+.fs-facturas-admin {
+    margin: 20px 0;
+}
+
+.fs-facturas-admin .alert {
+    border-radius: 4px;
+}
+
+.fs-facturas-admin h4 {
+    margin-top: 0;
+}
+
+/* Tabla de facturas */
+.table.fs-invoices {
+    background: white;
+}
+
+.table.fs-invoices thead {
+    background: #f5f5f5;
+}
+
+.table.fs-invoices td {
+    vertical-align: middle;
+}
+
+/* Badges */
+.badge-success {
+    background-color: #28a745;
+}
+
+.badge-warning {
+    background-color: #ffc107;
+}
+
+.badge-danger {
+    background-color: #dc3545;
+}
