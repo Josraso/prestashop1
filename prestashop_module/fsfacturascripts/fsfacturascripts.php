@@ -18,7 +18,7 @@ class FsFacturaScripts extends Module
     {
         $this->name = 'fsfacturascripts';
         $this->tab = 'billing_invoicing';
-        $this->version = '3.0.8';
+        $this->version = '3.0.9';
         $this->author = 'FacturaScripts';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -339,6 +339,7 @@ class FsFacturaScripts extends Module
 
     /**
      * Sincronizar pedidos históricos usando API REST de FacturaScripts
+     * IMPORTANTE: Maneja paginación para obtener TODAS las facturas
      */
     private function syncOrdersFromAPI()
     {
@@ -353,111 +354,121 @@ class FsFacturaScripts extends Module
             return ['error' => 'URL API o API Key no configurados'];
         }
 
-        // Llamar al endpoint de FACTURAS (no albaranes): /api/3/facturaclientes
-        $api_url = rtrim($fs_url, '/') . '/api/3/facturaclientes';
-
-        PrestaShopLogger::addLog(
-            "FacturaScripts API: Obteniendo FACTURAS desde {$api_url}",
-            1,
-            null,
-            'Module',
-            0,
-            true
-        );
-
-        $ch = curl_init($api_url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Token:' . $api_key,
-            'Accept:application/json'
-        ]);
-
-        $response = curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curl_error = curl_error($ch);
-        curl_close($ch);
-
-        PrestaShopLogger::addLog(
-            "FacturaScripts API: HTTP {$http_code} - Primeros 500 chars: " . substr($response, 0, 500),
-            1,
-            null,
-            'Module',
-            0,
-            true
-        );
-
-        if ($curl_error) {
-            return ['error' => "Error de conexión: {$curl_error}"];
-        }
-
-        if ($http_code == 404) {
-            return ['error' => "Error 404: Endpoint 'facturaclientes' no encontrado. URL: {$api_url}"];
-        }
-
-        if ($http_code == 401) {
-            return ['error' => "Error 401: Token inválido o sin permisos"];
-        }
-
-        if ($http_code != 200) {
-            return ['error' => "Error HTTP {$http_code}. Respuesta: " . substr($response, 0, 200)];
-        }
-
-        $facturas = json_decode($response, true);
-
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            return ['error' => 'Error al decodificar JSON: ' . json_last_error_msg()];
-        }
-
-        if (!is_array($facturas)) {
-            return ['error' => 'La respuesta no es un array. Tipo: ' . gettype($facturas)];
-        }
-
         $sincronizados = 0;
+        $offset = 0;
+        $limit = 100; // Obtener 100 facturas por página
+        $total_facturas = 0;
 
-        foreach ($facturas as $factura) {
-            // Solo procesar facturas que tienen numero2 (referencia PrestaShop)
-            if (empty($factura['numero2'])) {
-                continue;
-            }
+        // Iterar sobre todas las páginas
+        do {
+            // Llamar al endpoint de FACTURAS con paginación
+            $api_url = rtrim($fs_url, '/') . '/api/3/facturaclientes?offset=' . $offset . '&limit=' . $limit;
 
-            // Buscar pedido en PrestaShop por referencia
-            $sql = 'SELECT id_order FROM ' . _DB_PREFIX_ . 'orders WHERE reference = "' . pSQL($factura['numero2']) . '"';
-            $order_id = Db::getInstance()->getValue($sql);
-
-            if (!$order_id) {
-                continue;
-            }
-
-            // Verificar si ya existe
-            $exists = Db::getInstance()->getValue(
-                'SELECT id_fs_facturascripts FROM ' . _DB_PREFIX_ . 'fs_facturascripts WHERE id_order = ' . (int)$order_id
+            PrestaShopLogger::addLog(
+                "FacturaScripts API: Obteniendo FACTURAS desde {$api_url}",
+                1,
+                null,
+                'Module',
+                0,
+                true
             );
 
-            $data_insert = [
-                'id_order' => (int)$order_id,
-                'order_reference' => pSQL($factura['numero2']),
-                'fs_albaran_id' => null, // No usamos albaranes, solo facturas
-                'fs_factura_id' => (int)$factura['idfactura'],
-                'fs_factura_code' => pSQL($factura['codigo']),
-                'webhook_sent' => 1,
-                'webhook_response' => 'Sincronizado desde API (facturas)',
-                'date_upd' => date('Y-m-d H:i:s')
-            ];
+            $ch = curl_init($api_url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Token:' . $api_key,
+                'Accept:application/json'
+            ]);
 
-            if ($exists) {
-                Db::getInstance()->update('fs_facturascripts', $data_insert, 'id_order = ' . (int)$order_id);
-            } else {
-                $data_insert['date_add'] = date('Y-m-d H:i:s');
-                Db::getInstance()->insert('fs_facturascripts', $data_insert);
+            $response = curl_exec($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curl_error = curl_error($ch);
+            curl_close($ch);
+
+            if ($curl_error) {
+                return ['error' => "Error de conexión: {$curl_error}"];
             }
 
-            $sincronizados++;
-        }
+            if ($http_code == 404) {
+                return ['error' => "Error 404: Endpoint 'facturaclientes' no encontrado. URL: {$api_url}"];
+            }
+
+            if ($http_code == 401) {
+                return ['error' => "Error 401: Token inválido o sin permisos"];
+            }
+
+            if ($http_code != 200) {
+                return ['error' => "Error HTTP {$http_code}. Respuesta: " . substr($response, 0, 200)];
+            }
+
+            $facturas = json_decode($response, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                return ['error' => 'Error al decodificar JSON: ' . json_last_error_msg()];
+            }
+
+            if (!is_array($facturas)) {
+                return ['error' => 'La respuesta no es un array. Tipo: ' . gettype($facturas)];
+            }
+
+            $facturas_count = count($facturas);
+            $total_facturas += $facturas_count;
+
+            // Procesar facturas de esta página
+            foreach ($facturas as $factura) {
+                // Solo procesar facturas que tienen numero2 (referencia PrestaShop)
+                if (empty($factura['numero2'])) {
+                    continue;
+                }
+
+                // Buscar pedido en PrestaShop por referencia
+                $sql = 'SELECT id_order FROM ' . _DB_PREFIX_ . 'orders WHERE reference = "' . pSQL($factura['numero2']) . '"';
+                $order_id = Db::getInstance()->getValue($sql);
+
+                if (!$order_id) {
+                    continue;
+                }
+
+                // Verificar si ya existe
+                $exists = Db::getInstance()->getValue(
+                    'SELECT id_fs_facturascripts FROM ' . _DB_PREFIX_ . 'fs_facturascripts WHERE id_order = ' . (int)$order_id
+                );
+
+                $data_insert = [
+                    'id_order' => (int)$order_id,
+                    'order_reference' => pSQL($factura['numero2']),
+                    'fs_albaran_id' => null,
+                    'fs_factura_id' => (int)$factura['idfactura'],
+                    'fs_factura_code' => pSQL($factura['codigo']),
+                    'webhook_sent' => 1,
+                    'webhook_response' => 'Sincronizado desde API (facturas)',
+                    'date_upd' => date('Y-m-d H:i:s')
+                ];
+
+                if ($exists) {
+                    Db::getInstance()->update('fs_facturascripts', $data_insert, 'id_order = ' . (int)$order_id);
+                } else {
+                    $data_insert['date_add'] = date('Y-m-d H:i:s');
+                    Db::getInstance()->insert('fs_facturascripts', $data_insert);
+                }
+
+                $sincronizados++;
+            }
+
+            // Siguiente página
+            $offset += $limit;
+
+            // Si devolvió menos de $limit, ya no hay más
+            if ($facturas_count < $limit) {
+                break;
+            }
+
+        } while (true);
 
         PrestaShopLogger::addLog(
-            "FacturaScripts API: ✓ Sincronizados {$sincronizados} pedidos de " . count($facturas) . " facturas encontradas",
+            "FacturaScripts API: ✓ Sincronizados {$sincronizados} pedidos de {$total_facturas} facturas encontradas",
             1,
             null,
             'Module',
@@ -602,22 +613,16 @@ class FsFacturaScripts extends Module
     }
 
     /**
-     * URL de descarga usando API REST: /api/3/exportarFacturaCliente/{id}
-     * NOTA: Esta URL requiere el Token como parámetro GET porque es un enlace directo
+     * URL de descarga usando controlador proxy
+     * Esto evita exponer el Token en la URL y maneja la autenticación correctamente
      */
     private function getDownloadUrlAPI($factura_id)
     {
-        $fs_url = Configuration::get('FS_API_URL');
-        $api_key = Configuration::get('FS_API_KEY');
-        $pdf_format = Configuration::get('FS_PDF_FORMAT', 0);
-
-        // Para descargas directas (enlaces), el Token debe ir en URL
-        $url = rtrim($fs_url, '/') . '/api/3/exportarFacturaCliente/' . $factura_id . '?type=PDF&Token=' . urlencode($api_key);
-
-        if ($pdf_format > 0) {
-            $url .= '&format=' . $pdf_format;
-        }
-
-        return $url;
+        return $this->context->link->getModuleLink(
+            'fsfacturascripts',
+            'downloadpdf',
+            ['id' => $factura_id],
+            true
+        );
     }
 }

@@ -9,12 +9,14 @@ class AdminFsFacturasController extends ModuleAdminController
     {
         $this->bootstrap = true;
         $this->table = 'fs_facturascripts';
-        $this->className = 'FsFacturaScripts';
+        $this->identifier = 'id_fs_facturascripts';
+        $this->className = 'stdClass'; // No usamos ObjectModel
         $this->lang = false;
         $this->deleted = false;
         $this->explicitSelect = true;
+        $this->allow_export = true;
 
-        parent::__construct();
+        $this->context = Context::getContext();
 
         $this->fields_list = [
             'id_fs_facturascripts' => [
@@ -23,79 +25,69 @@ class AdminFsFacturasController extends ModuleAdminController
                 'class' => 'fixed-width-xs'
             ],
             'id_order' => [
-                'title' => 'Order ID',
+                'title' => 'Pedido',
                 'align' => 'center',
                 'class' => 'fixed-width-sm'
             ],
             'order_reference' => [
-                'title' => 'Order Reference',
+                'title' => 'Ref. Pedido',
                 'align' => 'left'
             ],
             'fs_factura_code' => [
-                'title' => 'Factura Code',
+                'title' => 'Código Factura',
                 'align' => 'left'
             ],
             'fs_factura_id' => [
-                'title' => 'Factura ID',
+                'title' => 'ID Factura',
                 'align' => 'center',
-                'class' => 'fixed-width-sm'
-            ],
-            'webhook_sent' => [
-                'title' => 'Webhook Sent',
-                'align' => 'center',
-                'active' => 'webhook_sent',
-                'type' => 'bool',
                 'class' => 'fixed-width-sm'
             ],
             'date_add' => [
-                'title' => 'Created',
+                'title' => 'Creado',
                 'type' => 'datetime',
                 'align' => 'right'
             ],
             'date_upd' => [
-                'title' => 'Updated',
+                'title' => 'Actualizado',
                 'type' => 'datetime',
                 'align' => 'right'
             ]
         ];
 
-        $this->_select = '
-            a.id_order,
-            a.order_reference,
-            a.fs_factura_code,
-            a.fs_factura_id,
-            a.webhook_sent,
-            a.date_add,
-            a.date_upd
-        ';
+        parent::__construct();
 
+        $this->_select = 'a.*';
         $this->_where = '';
-        $this->_orderBy = 'date_upd';
+        $this->_orderBy = 'id_fs_facturascripts';
         $this->_orderWay = 'DESC';
 
         $this->bulk_actions = [
             'delete' => [
-                'text' => $this->l('Delete selected'),
+                'text' => $this->l('Eliminar seleccionados'),
                 'icon' => 'icon-trash',
-                'confirm' => $this->l('Delete selected items?')
+                'confirm' => $this->l('¿Eliminar elementos seleccionados?')
             ]
         ];
     }
 
     public function renderList()
     {
-        $this->addRowAction('view');
+        // Eliminar acciones que causan problemas
         $this->addRowAction('delete');
 
-        $this->context->smarty->assign([
-            'module_dir' => _MODULE_DIR_ . 'fsfacturascripts/'
-        ]);
+        $total = $this->getRecordsCount();
 
-        $helper = '<div class="alert alert-info">
-            <h4>ℹ️ FacturaScripts Integration</h4>
-            <p><strong>Total registros:</strong> ' . $this->getRecordsCount() . '</p>
-            <p>Esta tabla muestra las facturas sincronizadas entre PrestaShop y FacturaScripts.</p>
-            <p>Para sincronizar pedidos históricos, ve a: <a href="' . $this->context->link->getAdminLink('AdminModules') . '&configure=fsfacturascripts">Configuración del módulo</a></p>
+        $helper = '<div class="panel">
+            <div class="panel-heading">
+                <i class="icon-info"></i> Información de sincronización
+            </div>
+            <div class="panel-body">
+                <p><strong>Total de registros sincronizados:</strong> ' . $total . '</p>
+                <p>Esta tabla muestra las facturas sincronizadas entre PrestaShop y FacturaScripts.</p>
+                <p><a href="' . $this->context->link->getAdminLink('AdminModules') . '&configure=fsfacturascripts" class="btn btn-primary">
+                    <i class="icon-cog"></i> Ir a Configuración
+                </a></p>
+            </div>
         </div>';
 
         return $helper . parent::renderList();
@@ -107,44 +99,39 @@ class AdminFsFacturasController extends ModuleAdminController
         return (int)Db::getInstance()->getValue($sql);
     }
 
-    public function renderView()
+    public function processBulkDelete()
     {
-        if (!($id = $this->getIdValue())) {
-            return $this->displayError($this->l('Invalid ID'));
+        if (!is_array($this->boxes) || !count($this->boxes)) {
+            $this->errors[] = Tools::displayError('You must select at least one element to delete.');
+            return false;
         }
 
-        $sql = 'SELECT * FROM ' . _DB_PREFIX_ . 'fs_facturascripts WHERE id_fs_facturascripts = ' . (int)$id;
-        $row = Db::getInstance()->getRow($sql);
-
-        if (!$row) {
-            return $this->displayError($this->l('Record not found'));
+        foreach ($this->boxes as $id) {
+            $sql = 'DELETE FROM ' . _DB_PREFIX_ . 'fs_facturascripts WHERE id_fs_facturascripts = ' . (int)$id;
+            Db::getInstance()->execute($sql);
         }
 
-        // Obtener info del pedido
-        $order = new Order($row['id_order']);
-
-        $this->context->smarty->assign([
-            'fs_data' => $row,
-            'order' => $order,
-            'back_url' => $this->context->link->getAdminLink('AdminFsFacturas')
-        ]);
-
-        $this->tpl_view_vars = [
-            'fs_data' => $row,
-            'order' => $order
-        ];
-
-        return parent::renderView();
+        $this->confirmations[] = $this->l('The selection has been successfully deleted.');
+        return true;
     }
 
-    public function setMedia($isNewTheme = false)
+    public function processDelete()
     {
-        parent::setMedia($isNewTheme);
-        $this->addCSS(_MODULE_DIR_ . 'fsfacturascripts/views/css/admin.css');
-    }
+        $id = (int)Tools::getValue('id_fs_facturascripts');
 
-    protected function getIdValue()
-    {
-        return (int)Tools::getValue('id_fs_facturascripts');
+        if (!$id) {
+            $this->errors[] = Tools::displayError('An error occurred while deleting the object.');
+            return false;
+        }
+
+        $sql = 'DELETE FROM ' . _DB_PREFIX_ . 'fs_facturascripts WHERE id_fs_facturascripts = ' . (int)$id;
+
+        if (Db::getInstance()->execute($sql)) {
+            Tools::redirectAdmin(self::$currentIndex . '&conf=1&token=' . $this->token);
+        } else {
+            $this->errors[] = Tools::displayError('An error occurred while deleting the object.');
+        }
+
+        return false;
     }
 }

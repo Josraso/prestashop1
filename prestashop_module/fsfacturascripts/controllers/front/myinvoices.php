@@ -47,17 +47,12 @@ class FsFacturaScriptsMyInvoicesModuleFrontController extends ModuleFrontControl
 
     private function getDownloadUrl($factura_id)
     {
-        $fs_url = Configuration::get('FS_API_URL');
-        $api_key = Configuration::get('FS_API_KEY');
-        $pdf_format = Configuration::get('FS_PDF_FORMAT', 0);
-
-        $url = rtrim($fs_url, '/') . '/api/3/exportarFacturaCliente/' . $factura_id . '?type=PDF&Token=' . urlencode($api_key);
-
-        if ($pdf_format > 0) {
-            $url .= '&format=' . $pdf_format;
-        }
-
-        return $url;
+        return $this->context->link->getModuleLink(
+            'fsfacturascripts',
+            'downloadpdf',
+            ['id' => $factura_id],
+            true
+        );
     }
 
     public function getBreadcrumbLinks()
