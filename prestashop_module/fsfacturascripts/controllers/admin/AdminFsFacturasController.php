@@ -63,7 +63,7 @@ class AdminFsFacturasController extends ModuleAdminController
 
         parent::__construct();
 
-        $this->_select = 'a.*';
+        $this->_select = 'a.*, "" as download';
         $this->_where = '';
         $this->_orderBy = 'a.id_fs_facturascripts';
         $this->_orderWay = 'DESC';
