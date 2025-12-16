@@ -441,25 +441,27 @@ class OrdersDownload
         }
 
         // Añadir línea de gastos de envío si existe
-        $totalShipping = (float)$orderXml->total_shipping;
-        if ($totalShipping > 0) {
-            $this->addShippingLine($albaran, $totalShipping);
+        $totalShippingWithTax = (float)$orderXml->total_shipping_tax_incl;
+        $totalShippingWithoutTax = (float)$orderXml->total_shipping_tax_excl;
+        if ($totalShippingWithTax > 0 || $totalShippingWithoutTax > 0) {
+            $this->addShippingLine($albaran, $totalShippingWithTax, $totalShippingWithoutTax);
         }
 
         // Añadir línea de empaquetado para regalo si existe
-        $totalWrapping = (float)$orderXml->total_wrapping_tax_incl;
-        if ($totalWrapping > 0) {
-            $this->addGiftWrappingLine($albaran, $totalWrapping);
+        $totalWrappingWithTax = (float)$orderXml->total_wrapping_tax_incl;
+        $totalWrappingWithoutTax = (float)$orderXml->total_wrapping_tax_excl;
+        if ($totalWrappingWithTax > 0 || $totalWrappingWithoutTax > 0) {
+            $this->addGiftWrappingLine($albaran, $totalWrappingWithTax, $totalWrappingWithoutTax);
         }
 
         // Añadir línea de descuento/cupón si existe
-        // IMPORTANTE: PrestaShop trae el descuento con IVA incluido (total_discounts_tax_incl)
-        // Debemos calcular el importe sin IVA y asignar IVA 21%
+        // PrestaShop trae el descuento con IVA incluido y sin IVA
         $totalDiscountWithTax = (float)$orderXml->total_discounts_tax_incl;
-        if ($totalDiscountWithTax > 0) {
+        $totalDiscountWithoutTax = (float)$orderXml->total_discounts_tax_excl;
+        if ($totalDiscountWithTax > 0 || $totalDiscountWithoutTax > 0) {
             // Intentar obtener el nombre del cupón/descuento
             $discountName = $this->getDiscountName($orderXml);
-            $this->addDiscountLine($albaran, $totalDiscountWithTax, $discountName);
+            $this->addDiscountLine($albaran, $totalDiscountWithTax, $totalDiscountWithoutTax, $discountName);
         }
 
         // Calcular y asignar totales manualmente
@@ -1002,7 +1004,7 @@ class OrdersDownload
     /**
      * Añade línea de gastos de envío al albarán
      */
-    private function addShippingLine(AlbaranCliente $albaran, float $shippingCostWithTax): void
+    private function addShippingLine(AlbaranCliente $albaran, float $shippingCostWithTax, float $shippingCostWithoutTax): void
     {
         // Buscar el producto de envío
         $variante = new Variante();
@@ -1013,9 +1015,26 @@ class OrdersDownload
             return;
         }
 
-        // IMPORTANTE: total_shipping viene CON IVA, hay que quitárselo
-        $ivaTransporte = 21; // IVA del transporte
-        $shippingCostWithoutTax = $shippingCostWithTax / (1 + $ivaTransporte / 100);
+        // Calcular IVA real desde PrestaShop (mismo método que productos)
+        $ivaTransporte = 21; // Por defecto 21%
+
+        if ($shippingCostWithoutTax > 0 && $shippingCostWithTax > $shippingCostWithoutTax) {
+            // Calcular IVA aproximado desde los precios de PrestaShop
+            $calculatedRate = (($shippingCostWithTax / $shippingCostWithoutTax) - 1) * 100;
+
+            // Redondear al IVA legal español más cercano
+            if ($calculatedRate >= 18) {
+                $ivaTransporte = 21; // IVA general
+            } elseif ($calculatedRate >= 7) {
+                $ivaTransporte = 10; // IVA reducido
+            } elseif ($calculatedRate >= 2) {
+                $ivaTransporte = 4;  // IVA superreducido
+            } else {
+                $ivaTransporte = 0;  // Exento
+            }
+        } elseif ($shippingCostWithoutTax == 0 || $shippingCostWithTax == $shippingCostWithoutTax) {
+            $ivaTransporte = 0; // Sin IVA o exento
+        }
 
         $linea = new LineaAlbaranCliente();
         $linea->idalbaran = $albaran->idalbaran;
@@ -1023,7 +1042,7 @@ class OrdersDownload
         $linea->referencia = $variante->referencia;
         $linea->descripcion = 'Gastos de envío';
         $linea->cantidad = 1;
-        $linea->pvpunitario = round($shippingCostWithoutTax, 2); // Precio SIN IVA
+        $linea->pvpunitario = round($shippingCostWithoutTax, 2); // Precio SIN IVA de PrestaShop
 
         // Asignar codimpuesto correcto para el transporte
         $codimpuesto = PrestashopTaxMap::getCodImpuesto($ivaTransporte);
@@ -1044,13 +1063,13 @@ class OrdersDownload
 
         $linea->save();
 
-        Tools::log()->info("✓ ENVÍO → Con IVA: {$shippingCostWithTax}€ | Sin IVA: {$linea->pvpunitario}€ | IVA: {$ivaTransporte}%");
+        Tools::log()->info("✓ ENVÍO → Con IVA: {$shippingCostWithTax}€ | Sin IVA: {$shippingCostWithoutTax}€ | IVA: {$ivaTransporte}%");
     }
 
     /**
      * Añade línea de empaquetado para regalo al albarán
      */
-    private function addGiftWrappingLine(AlbaranCliente $albaran, float $wrappingCostWithTax): void
+    private function addGiftWrappingLine(AlbaranCliente $albaran, float $wrappingCostWithTax, float $wrappingCostWithoutTax): void
     {
         // Buscar el producto de empaquetado para regalo
         $variante = new Variante();
@@ -1061,9 +1080,26 @@ class OrdersDownload
             return;
         }
 
-        // IMPORTANTE: total_wrapping viene CON IVA, hay que quitárselo
-        $ivaRegalo = 21; // IVA del empaquetado para regalo
-        $wrappingCostWithoutTax = $wrappingCostWithTax / (1 + $ivaRegalo / 100);
+        // Calcular IVA real desde PrestaShop (mismo método que productos)
+        $ivaRegalo = 21; // Por defecto 21%
+
+        if ($wrappingCostWithoutTax > 0 && $wrappingCostWithTax > $wrappingCostWithoutTax) {
+            // Calcular IVA aproximado desde los precios de PrestaShop
+            $calculatedRate = (($wrappingCostWithTax / $wrappingCostWithoutTax) - 1) * 100;
+
+            // Redondear al IVA legal español más cercano
+            if ($calculatedRate >= 18) {
+                $ivaRegalo = 21; // IVA general
+            } elseif ($calculatedRate >= 7) {
+                $ivaRegalo = 10; // IVA reducido
+            } elseif ($calculatedRate >= 2) {
+                $ivaRegalo = 4;  // IVA superreducido
+            } else {
+                $ivaRegalo = 0;  // Exento
+            }
+        } elseif ($wrappingCostWithoutTax == 0 || $wrappingCostWithTax == $wrappingCostWithoutTax) {
+            $ivaRegalo = 0; // Sin IVA o exento
+        }
 
         $linea = new LineaAlbaranCliente();
         $linea->idalbaran = $albaran->idalbaran;
@@ -1071,7 +1107,7 @@ class OrdersDownload
         $linea->referencia = $variante->referencia;
         $linea->descripcion = 'Empaquetado para regalo';
         $linea->cantidad = 1;
-        $linea->pvpunitario = round($wrappingCostWithoutTax, 2); // Precio SIN IVA
+        $linea->pvpunitario = round($wrappingCostWithoutTax, 2); // Precio SIN IVA de PrestaShop
 
         // Asignar codimpuesto correcto para el empaquetado
         $codimpuesto = PrestashopTaxMap::getCodImpuesto($ivaRegalo);
@@ -1092,32 +1128,49 @@ class OrdersDownload
 
         $linea->save();
 
-        Tools::log()->info("✓ REGALO → Con IVA: {$wrappingCostWithTax}€ | Sin IVA: {$linea->pvpunitario}€ | IVA: {$ivaRegalo}%");
+        Tools::log()->info("✓ REGALO → Con IVA: {$wrappingCostWithTax}€ | Sin IVA: {$wrappingCostWithoutTax}€ | IVA: {$ivaRegalo}%");
     }
 
     /**
-     * Añade línea de descuento/cupón al albarán (línea negativa con IVA 21%)
+     * Añade línea de descuento/cupón al albarán (línea negativa con IVA real de PrestaShop)
      *
      * @param AlbaranCliente $albaran Albarán al que añadir el descuento
      * @param float $discountWithTax Importe del descuento CON IVA incluido desde PrestaShop
+     * @param float $discountWithoutTax Importe del descuento SIN IVA desde PrestaShop
      * @param string $discountName Nombre del cupón/descuento desde PrestaShop
      */
-    private function addDiscountLine(AlbaranCliente $albaran, float $discountWithTax, string $discountName = ''): void
+    private function addDiscountLine(AlbaranCliente $albaran, float $discountWithTax, float $discountWithoutTax, string $discountName = ''): void
     {
-        // PrestaShop trae el descuento con IVA incluido (total_discounts_tax_incl)
-        // Calcular el importe sin IVA para la línea (asumiendo IVA 21%)
-        $ivaDescuento = 21;
-        $discountWithoutTax = $discountWithTax / (1 + $ivaDescuento / 100);
+        // Calcular IVA real desde PrestaShop (mismo método que productos)
+        $ivaDescuento = 21; // Por defecto 21%
 
-        // Crear línea negativa (descuento) con IVA 21%
+        if ($discountWithoutTax > 0 && $discountWithTax > $discountWithoutTax) {
+            // Calcular IVA aproximado desde los precios de PrestaShop
+            $calculatedRate = (($discountWithTax / $discountWithoutTax) - 1) * 100;
+
+            // Redondear al IVA legal español más cercano
+            if ($calculatedRate >= 18) {
+                $ivaDescuento = 21; // IVA general
+            } elseif ($calculatedRate >= 7) {
+                $ivaDescuento = 10; // IVA reducido
+            } elseif ($calculatedRate >= 2) {
+                $ivaDescuento = 4;  // IVA superreducido
+            } else {
+                $ivaDescuento = 0;  // Exento
+            }
+        } elseif ($discountWithoutTax == 0 || $discountWithTax == $discountWithoutTax) {
+            $ivaDescuento = 0; // Sin IVA o exento
+        }
+
+        // Crear línea negativa (descuento) con IVA real
         $linea = new LineaAlbaranCliente();
         $linea->idalbaran = $albaran->idalbaran;
         $linea->referencia = 'DCTO-PS';
         $linea->descripcion = !empty($discountName) ? $discountName : 'Descuento / Cupón';
         $linea->cantidad = 1;
-        $linea->pvpunitario = -round($discountWithoutTax, 2); // Precio NEGATIVO sin IVA
+        $linea->pvpunitario = -round($discountWithoutTax, 2); // Precio NEGATIVO sin IVA de PrestaShop
 
-        // Asignar IVA 21%
+        // Asignar codimpuesto correcto
         $codimpuesto = PrestashopTaxMap::getCodImpuesto($ivaDescuento);
         if ($codimpuesto) {
             $linea->codimpuesto = $codimpuesto;
@@ -1136,7 +1189,7 @@ class OrdersDownload
 
         $linea->save();
 
-        Tools::log()->info("✓ DESCUENTO → '{$linea->descripcion}': Con IVA: -{$discountWithTax}€ | Sin IVA: {$linea->pvpunitario}€ | IVA: {$ivaDescuento}%");
+        Tools::log()->info("✓ DESCUENTO → '{$linea->descripcion}': Con IVA: -{$discountWithTax}€ | Sin IVA: -{$discountWithoutTax}€ | IVA: {$ivaDescuento}%");
     }
 
     /**
