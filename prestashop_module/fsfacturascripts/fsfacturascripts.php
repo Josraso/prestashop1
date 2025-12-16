@@ -18,7 +18,7 @@ class FsFacturaScripts extends Module
     {
         $this->name = 'fsfacturascripts';
         $this->tab = 'billing_invoicing';
-        $this->version = '3.1.3';
+        $this->version = '3.1.4';
         $this->author = 'FacturaScripts';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -97,6 +97,7 @@ class FsFacturaScripts extends Module
             `fs_albaran_id` INT(11) DEFAULT NULL,
             `fs_factura_id` INT(11) DEFAULT NULL,
             `fs_factura_code` VARCHAR(64) DEFAULT NULL,
+            `fs_factura_fecha` DATE DEFAULT NULL,
             `webhook_sent` TINYINT(1) DEFAULT 0,
             `webhook_response` TEXT DEFAULT NULL,
             `date_add` DATETIME NOT NULL,
@@ -107,6 +108,17 @@ class FsFacturaScripts extends Module
         ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8;';
 
         $result = Db::getInstance()->execute($sql);
+
+        // Añadir columna fs_factura_fecha si no existe (para instalaciones existentes)
+        $checkColumn = Db::getInstance()->executeS(
+            "SHOW COLUMNS FROM `" . _DB_PREFIX_ . "fs_facturascripts` LIKE 'fs_factura_fecha'"
+        );
+        if (!$checkColumn) {
+            Db::getInstance()->execute(
+                "ALTER TABLE `" . _DB_PREFIX_ . "fs_facturascripts`
+                ADD COLUMN `fs_factura_fecha` DATE DEFAULT NULL AFTER `fs_factura_code`"
+            );
+        }
 
         if (!$result) {
             PrestaShopLogger::addLog(
@@ -431,29 +443,30 @@ class FsFacturaScripts extends Module
                     continue;
                 }
 
-                // Verificar si ya existe
-                $exists = Db::getInstance()->getValue(
-                    'SELECT id_fs_facturascripts FROM ' . _DB_PREFIX_ . 'fs_facturascripts WHERE id_order = ' . (int)$order_id
-                );
-
-                $data_insert = [
-                    'id_order' => (int)$order_id,
-                    'order_reference' => pSQL($factura['numero2']),
-                    'fs_albaran_id' => null,
-                    'fs_factura_id' => (int)$factura['idfactura'],
-                    'fs_factura_code' => pSQL($factura['codigo']),
-                    'webhook_sent' => 1,
-                    'webhook_response' => 'Sincronizado desde API (facturas)',
-                    'date_upd' => date('Y-m-d H:i:s')
-                ];
-
-                if ($exists) {
-                    Db::getInstance()->update('fs_facturascripts', $data_insert, 'id_order = ' . (int)$order_id);
-                } else {
-                    $data_insert['date_add'] = date('Y-m-d H:i:s');
-                    Db::getInstance()->insert('fs_facturascripts', $data_insert);
+                // Preparar fecha de factura
+                $fecha_factura = null;
+                if (!empty($factura['fecha'])) {
+                    $fecha_factura = date('Y-m-d', strtotime($factura['fecha']));
                 }
 
+                // USAR REPLACE INTO para SIEMPRE sobrescribir
+                // Si existe (mismo id_order), actualiza; si no existe, inserta
+                $sql_replace = 'REPLACE INTO ' . _DB_PREFIX_ . 'fs_facturascripts
+                    (id_order, order_reference, fs_albaran_id, fs_factura_id, fs_factura_code, fs_factura_fecha, webhook_sent, webhook_response, date_add, date_upd)
+                    VALUES (
+                        ' . (int)$order_id . ',
+                        "' . pSQL($factura['numero2']) . '",
+                        NULL,
+                        ' . (int)$factura['idfactura'] . ',
+                        "' . pSQL($factura['codigo']) . '",
+                        ' . ($fecha_factura ? '"' . pSQL($fecha_factura) . '"' : 'NULL') . ',
+                        1,
+                        "Sincronizado desde API (facturas)",
+                        COALESCE((SELECT date_add FROM ' . _DB_PREFIX_ . 'fs_facturascripts WHERE id_order = ' . (int)$order_id . '), "' . date('Y-m-d H:i:s') . '"),
+                        "' . date('Y-m-d H:i:s') . '"
+                    )';
+
+                Db::getInstance()->execute($sql_replace);
                 $sincronizados++;
             }
 

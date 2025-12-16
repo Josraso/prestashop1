@@ -37,20 +37,16 @@ class AdminFsFacturasController extends ModuleAdminController
                 'title' => 'Código Factura',
                 'align' => 'left'
             ],
+            'fs_factura_fecha' => [
+                'title' => 'Fecha Factura',
+                'type' => 'date',
+                'align' => 'center',
+                'class' => 'fixed-width-md'
+            ],
             'fs_factura_id' => [
                 'title' => 'ID Factura',
                 'align' => 'center',
                 'class' => 'fixed-width-sm'
-            ],
-            'date_add' => [
-                'title' => 'Creado',
-                'type' => 'datetime',
-                'align' => 'right'
-            ],
-            'date_upd' => [
-                'title' => 'Actualizado',
-                'type' => 'datetime',
-                'align' => 'right'
             ],
             'download' => [
                 'title' => 'Descargar PDF',
@@ -99,13 +95,10 @@ class AdminFsFacturasController extends ModuleAdminController
         return (int)Db::getInstance()->getValue($sql);
     }
 
-    public function displayDownloadLink($token, $id)
+    public function displayDownloadLink($value, $row)
     {
-        // Obtener datos de la factura
-        $sql = 'SELECT fs_factura_id, fs_factura_code FROM ' . _DB_PREFIX_ . 'fs_facturascripts WHERE id_fs_facturascripts = ' . (int)$id;
-        $row = Db::getInstance()->getRow($sql);
-
-        if (!$row || empty($row['fs_factura_id'])) {
+        // $row contiene todos los campos de la fila actual
+        if (empty($row['fs_factura_id'])) {
             return '<span class="text-muted">Sin factura</span>';
         }
 
@@ -114,12 +107,12 @@ class AdminFsFacturasController extends ModuleAdminController
         $download_url = $context->link->getModuleLink(
             'fsfacturascripts',
             'downloadadmin',
-            ['id' => $row['fs_factura_id']],
+            ['id' => (int)$row['fs_factura_id']],
             true
         );
 
         return '<a href="' . htmlspecialchars($download_url) . '" target="_blank" class="btn btn-default btn-sm">
-            <i class="icon-download"></i> Descargar ' . htmlspecialchars($row['fs_factura_code']) . '
+            <i class="icon-download"></i> ' . htmlspecialchars($row['fs_factura_code']) . '
         </a>';
     }
 }

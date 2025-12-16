@@ -11,9 +11,19 @@ class FsFacturaScriptsDownloadAdminModuleFrontController extends ModuleFrontCont
 
     public function initContent()
     {
-        // Verificar que sea admin
-        if (!isset($this->context->employee) || !$this->context->employee->id) {
-            die('Acceso denegado');
+        // Verificar que haya un empleado logueado (admin)
+        // En PrestaShop, cuando estás en el backoffice, el employee está en la cookie
+        if (!$this->context->employee || !Validate::isLoadedObject($this->context->employee)) {
+            // Intentar cargar desde cookie de admin
+            $cookie = new Cookie('psAdmin');
+            if (!isset($cookie->id_employee) || !(int)$cookie->id_employee) {
+                die('Acceso denegado - Debes estar logueado como administrador');
+            }
+            // Cargar el empleado
+            $employee = new Employee((int)$cookie->id_employee);
+            if (!Validate::isLoadedObject($employee)) {
+                die('Acceso denegado - Empleado no válido');
+            }
         }
 
         $factura_id = (int)Tools::getValue('id');
