@@ -31,6 +31,19 @@ class ProductsPrestashop extends Controller
     /** @var int */
     public $errorCount = 0;
 
+    /** @var string */
+    public $filterStatus = 'todos';
+
+    /** @var array */
+    public $stats = [
+        'importados' => 0,
+        'ya_existen' => 0,
+        'nuevos' => 0
+    ];
+
+    /** @var int */
+    public $visibleProducts = 0;
+
     public function getPageData(): array
     {
         $data = parent::getPageData();
@@ -51,6 +64,9 @@ class ProductsPrestashop extends Controller
 
         // Cargar configuración
         $this->config = PrestashopConfig::getActive();
+
+        // Obtener filtro del request (GET para persistencia)
+        $this->filterStatus = $this->request->query->get('filter', 'todos');
 
         // Procesar acciones
         $action = $this->request->request->get('action', '');
@@ -73,6 +89,10 @@ class ProductsPrestashop extends Controller
 
             case 'import-selected':
                 $this->importSelectedAction();
+                break;
+
+            case 'update-ventasinstock':
+                $this->updateVentaSinStockAction();
                 break;
         }
 
@@ -114,6 +134,12 @@ class ProductsPrestashop extends Controller
                     $this->totalProducts = count($productsData);
                 }
             }
+        }
+
+        // Calcular estadísticas y aplicar filtro
+        if ($this->productsLoaded && !empty($this->products)) {
+            $this->calculateStats();
+            $this->applyFilter();
         }
 
         Tools::log()->info("================================");
@@ -329,6 +355,158 @@ class ProductsPrestashop extends Controller
 
         } catch (\Exception $e) {
             Tools::log()->error('Error importando productos: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Calcula estadísticas de productos
+     */
+    private function calculateStats(): void
+    {
+        $this->stats = [
+            'importados' => 0,
+            'ya_existen' => 0,
+            'nuevos' => 0
+        ];
+
+        foreach ($this->products as $product) {
+            if (!empty($product['imported'])) {
+                $this->stats['importados']++;
+            }
+
+            if (!empty($product['exists'])) {
+                $this->stats['ya_existen']++;
+            } else {
+                $this->stats['nuevos']++;
+            }
+        }
+    }
+
+    /**
+     * Aplica filtro a productos
+     */
+    private function applyFilter(): void
+    {
+        $allProducts = $this->products;
+        $filtered = [];
+
+        foreach ($allProducts as $index => $product) {
+            $include = false;
+
+            switch ($this->filterStatus) {
+                case 'todos':
+                    $include = true;
+                    break;
+
+                case 'importados':
+                    $include = !empty($product['imported']);
+                    break;
+
+                case 'ya_existen':
+                    $include = !empty($product['exists']);
+                    break;
+
+                case 'nuevos':
+                    $include = empty($product['exists']);
+                    break;
+            }
+
+            if ($include) {
+                $filtered[$index] = $product;
+            }
+        }
+
+        $this->products = $filtered;
+        $this->visibleProducts = count($filtered);
+    }
+
+    /**
+     * Actualiza ventasinstock para productos seleccionados
+     */
+    private function updateVentaSinStockAction(): void
+    {
+        if (!$this->permissions->allowUpdate) {
+            Tools::log()->warning('No tienes permisos para actualizar productos');
+            return;
+        }
+
+        // Obtener IDs seleccionados
+        $selectedIds = $this->request->request->get('selected_products', []);
+
+        // Si viene como string serializado de PHP, deserializar
+        if (is_string($selectedIds)) {
+            $selectedIds = @unserialize($selectedIds);
+            if ($selectedIds === false) {
+                $selectedIds = [];
+            }
+        }
+
+        // Convertir índices a integers
+        if (is_array($selectedIds)) {
+            $selectedIds = array_map('intval', $selectedIds);
+        }
+
+        if (empty($selectedIds)) {
+            Tools::log()->warning('No se seleccionó ningún producto');
+            return;
+        }
+
+        try {
+            Tools::log()->info('========================================');
+            Tools::log()->info('ACTUALIZANDO VENTA SIN STOCK');
+            Tools::log()->info('========================================');
+
+            // Cargar modelo Producto de FacturaScripts
+            $productoModel = new \FacturaScripts\Dinamic\Model\Producto();
+            $varianteModel = new \FacturaScripts\Dinamic\Model\Variante();
+
+            $updated = 0;
+
+            // Obtener productos de BD temporal
+            $allProducts = PrestashopProductsTemp::getProducts();
+
+            foreach ($selectedIds as $index) {
+                if (!isset($allProducts[$index])) {
+                    continue;
+                }
+
+                $product = $allProducts[$index];
+
+                // Verificar que tenga referencia
+                if (empty($product['reference'])) {
+                    continue;
+                }
+
+                // Buscar producto en FacturaScripts por referencia
+                $producto = $productoModel->get($product['reference']);
+
+                if ($producto) {
+                    // Actualizar ventasinstock
+                    $producto->ventasinstock = true;
+
+                    if ($producto->save()) {
+                        // Actualizar también la variante
+                        $variante = $varianteModel->get($product['reference']);
+                        if ($variante) {
+                            $variante->ventasinstock = true;
+                            $variante->save();
+                        }
+
+                        $updated++;
+                        Tools::log()->info("✓ Actualizado ventasinstock: {$product['reference']} - {$product['name']}");
+                    }
+                }
+            }
+
+            Tools::log()->info("========================================");
+            Tools::log()->info("ACTUALIZACIÓN COMPLETADA");
+            Tools::log()->info("Productos actualizados: {$updated}");
+            Tools::log()->info("========================================");
+
+            $this->importedCount = $updated;
+
+        } catch (\Exception $e) {
+            Tools::log()->error('Error actualizando ventasinstock: ' . $e->getMessage());
         }
     }
 }

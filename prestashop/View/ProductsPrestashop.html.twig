@@ -10,18 +10,103 @@
         </div>
     </div>
 
-    {# Botones de acción #}
+    {# Estadísticas #}
+    {% if fsc.productsLoaded and fsc.totalProducts > 0 %}
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card border-left-primary shadow">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                Total Productos
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {{ fsc.totalProducts }}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-box fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-left-success shadow">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                Importados
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {{ fsc.stats.importados }}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-check-circle fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-left-info shadow">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                Ya Existen
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {{ fsc.stats.ya_existen }}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-database fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-left-warning shadow">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                Nuevos
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {{ fsc.stats.nuevos }}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-star fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {# Botones de acción principales #}
     <div class="row mb-3">
         <div class="col-12">
             {% if not fsc.productsLoaded %}
                 <button type="button" id="downloadProductsBtn" class="btn btn-primary">
-                    <i class="fas fa-download"></i> Descargar Productos de PrestaShop
+                    <i class="fas fa-download"></i> DESCARGAR PRODUCTOS DE PRESTASHOP
                 </button>
             {% else %}
                 <form method="post" class="d-inline">
                     <input type="hidden" name="action" value="clear-products"/>
                     <button type="submit" class="btn btn-warning" onclick="return confirm('¿Limpiar productos descargados y empezar de nuevo?');">
-                        <i class="fas fa-trash"></i> Limpiar y Descargar de Nuevo
+                        <i class="fas fa-trash"></i> LIMPIAR
                     </button>
                 </form>
             {% endif %}
@@ -58,8 +143,8 @@
     <div class="row mb-3">
         <div class="col-12">
             <div class="alert alert-info">
-                <strong><i class="fas fa-info-circle"></i> Resultado de la importación:</strong><br>
-                <i class="fas fa-check-circle text-success"></i> Productos importados: <strong>{{ fsc.importedCount }}</strong><br>
+                <strong><i class="fas fa-info-circle"></i> Resultado de la operación:</strong><br>
+                <i class="fas fa-check-circle text-success"></i> Productos procesados: <strong>{{ fsc.importedCount }}</strong><br>
                 {% if fsc.errorCount > 0 %}
                 <i class="fas fa-times-circle text-danger"></i> Errores: <strong>{{ fsc.errorCount }}</strong>
                 {% endif %}
@@ -68,23 +153,54 @@
     </div>
     {% endif %}
 
-    {# Tabla de productos #}
+    {# Filtros #}
     {% if fsc.productsLoaded and fsc.totalProducts > 0 %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header py-2">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-filter"></i> Filtros
+                        <span class="badge badge-primary ml-2">{{ fsc.visibleProducts }} visibles</span>
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="btn-group" role="group">
+                        <a href="{{ fsc.url() }}?filter=todos" class="btn btn-sm {% if fsc.filterStatus == 'todos' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                            <i class="fas fa-list"></i> Todos ({{ fsc.totalProducts }})
+                        </a>
+                        <a href="{{ fsc.url() }}?filter=importados" class="btn btn-sm {% if fsc.filterStatus == 'importados' %}btn-success{% else %}btn-outline-success{% endif %}">
+                            <i class="fas fa-check-circle"></i> Importados ({{ fsc.stats.importados }})
+                        </a>
+                        <a href="{{ fsc.url() }}?filter=ya_existen" class="btn btn-sm {% if fsc.filterStatus == 'ya_existen' %}btn-info{% else %}btn-outline-info{% endif %}">
+                            <i class="fas fa-database"></i> Ya existen ({{ fsc.stats.ya_existen }})
+                        </a>
+                        <a href="{{ fsc.url() }}?filter=nuevos" class="btn btn-sm {% if fsc.filterStatus == 'nuevos' %}btn-warning{% else %}btn-outline-warning{% endif %}">
+                            <i class="fas fa-star"></i> Nuevos ({{ fsc.stats.nuevos }})
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Tabla de productos #}
     <div class="row">
         <div class="col-12">
             <div class="card shadow">
                 <div class="card-header py-3">
                     <h6 class="m-0 font-weight-bold text-primary">
-                        <i class="fas fa-list"></i> Productos Descargados ({{ fsc.totalProducts }})
+                        <i class="fas fa-list"></i> Productos
+                        <span class="badge badge-secondary ml-2" id="selectedCount">0 seleccionados</span>
                     </h6>
                 </div>
                 <div class="card-body">
                     <form method="post" id="importForm">
-                        <input type="hidden" name="action" value="import-selected"/>
+                        <input type="hidden" name="action" id="formAction" value="import-selected"/>
 
                         {# Botones de acción #}
-                        <div class="mb-3 d-flex justify-content-between align-items-center">
-                            <div>
+                        <div class="mb-3 d-flex justify-content-between align-items-center flex-wrap">
+                            <div class="mb-2">
                                 <button type="button" id="selectAll" class="btn btn-sm btn-outline-primary">
                                     <i class="fas fa-check-square"></i> Seleccionar Todos
                                 </button>
@@ -92,9 +208,12 @@
                                     <i class="fas fa-square"></i> Deseleccionar Todos
                                 </button>
                             </div>
-                            <div>
-                                <button type="submit" class="btn btn-success" onclick="return confirm('¿Importar productos seleccionados?');">
-                                    <i class="fas fa-upload"></i> Importar Seleccionados
+                            <div class="mb-2">
+                                <button type="submit" class="btn btn-success" onclick="document.getElementById('formAction').value='import-selected'; return confirm('¿Importar productos seleccionados?');">
+                                    <i class="fas fa-upload"></i> IMPORTAR SELECCIONADOS
+                                </button>
+                                <button type="submit" class="btn btn-info ml-2" onclick="document.getElementById('formAction').value='update-ventasinstock'; return confirm('¿Actualizar venta sin stock para los productos seleccionados?');">
+                                    <i class="fas fa-shopping-cart"></i> ACTUALIZAR VENTA SIN STOCK
                                 </button>
                             </div>
                         </div>
@@ -117,7 +236,7 @@
                                 </thead>
                                 <tbody>
                                     {% for index, product in fsc.products %}
-                                    <tr class="{% if product.exists %}product-exists{% endif %} {% if not product.active %}text-muted{% endif %}">
+                                    <tr class="{% if product.exists %}product-exists{% endif %} {% if product.imported %}product-imported{% endif %} {% if not product.active %}text-muted{% endif %}">
                                         <td>
                                             <input type="checkbox"
                                                    name="selected_products[]"
@@ -148,11 +267,15 @@
                                         </td>
                                         <td>
                                             {{ product.name }}
-                                            {% if product.exists %}
+                                            {% if product.imported %}
+                                                <br><small class="text-primary"><i class="fas fa-check-double"></i> Importado previamente</small>
+                                            {% elseif product.exists %}
                                                 <br><small class="text-success"><i class="fas fa-check-circle"></i> Ya existe en FacturaScripts (se actualizará)</small>
+                                            {% else %}
+                                                <br><small class="text-warning"><i class="fas fa-star"></i> Producto nuevo</small>
                                             {% endif %}
                                             {% if not product.active %}
-                                                <br><small class="text-warning"><i class="fas fa-exclamation-triangle"></i> Inactivo en PrestaShop</small>
+                                                <br><small class="text-muted"><i class="fas fa-ban"></i> Inactivo en PrestaShop</small>
                                             {% endif %}
                                         </td>
                                         <td class="text-right">
@@ -199,7 +322,7 @@
     <div class="row">
         <div class="col-12">
             <div class="alert alert-info">
-                <i class="fas fa-info-circle"></i> Haz clic en "Descargar Productos de PrestaShop" para comenzar.
+                <i class="fas fa-info-circle"></i> Haz clic en "DESCARGAR PRODUCTOS DE PRESTASHOP" para comenzar.
             </div>
         </div>
     </div>
@@ -213,6 +336,15 @@
         const productCheckboxes = document.querySelectorAll('.product-checkbox:not(:disabled)');
         const selectAllBtn = document.getElementById('selectAll');
         const deselectAllBtn = document.getElementById('deselectAll');
+        const selectedCount = document.getElementById('selectedCount');
+
+        // Actualizar contador de seleccionados
+        function updateSelectedCount() {
+            const count = Array.from(productCheckboxes).filter(cb => cb.checked).length;
+            if (selectedCount) {
+                selectedCount.textContent = count + ' seleccionados';
+            }
+        }
 
         // Checkbox principal
         if (checkboxAll) {
@@ -220,6 +352,7 @@
                 productCheckboxes.forEach(function(checkbox) {
                     checkbox.checked = checkboxAll.checked;
                 });
+                updateSelectedCount();
             });
         }
 
@@ -230,6 +363,7 @@
                     checkbox.checked = true;
                 });
                 if (checkboxAll) checkboxAll.checked = true;
+                updateSelectedCount();
             });
         }
 
@@ -240,6 +374,7 @@
                     checkbox.checked = false;
                 });
                 if (checkboxAll) checkboxAll.checked = false;
+                updateSelectedCount();
             });
         }
 
@@ -253,8 +388,12 @@
                     checkboxAll.checked = allChecked;
                     checkboxAll.indeterminate = !allChecked && !noneChecked;
                 }
+                updateSelectedCount();
             });
         });
+
+        // Inicializar contador
+        updateSelectedCount();
 
         // ========== DESCARGA POR LOTES ==========
         const downloadBtn = document.getElementById('downloadProductsBtn');
@@ -292,7 +431,7 @@
                 }
 
                 const total = data.total;
-                const batchSize = 5; // Productos por lote (con atributos es más lento pero necesario)
+                const batchSize = 5; // Productos por lote
                 let offset = 0;
 
                 progressInfo.textContent = `Total de productos en PrestaShop: ${total}`;
@@ -360,6 +499,23 @@
 </script>
 
 <style>
+    /* Bordes de colores para cards */
+    .border-left-primary {
+        border-left: 4px solid #4e73df !important;
+    }
+
+    .border-left-success {
+        border-left: 4px solid #1cc88a !important;
+    }
+
+    .border-left-info {
+        border-left: 4px solid #36b9cc !important;
+    }
+
+    .border-left-warning {
+        border-left: 4px solid #f6c23e !important;
+    }
+
     /* Sticky header para la tabla */
     .table-responsive thead th {
         background-color: #f8f9fa;
@@ -400,6 +556,16 @@
         background-color: #c3e6cb !important;
     }
 
+    /* Productos ya importados */
+    .product-imported {
+        background-color: #d1ecf1 !important;
+        border-left: 3px solid #17a2b8;
+    }
+
+    .product-imported:hover {
+        background-color: #bee5eb !important;
+    }
+
     /* Asegurar que el texto de badges sea siempre visible */
     .badge {
         color: #000 !important;
@@ -419,6 +585,25 @@
     .badge-info {
         background-color: #17a2b8 !important;
         color: #fff !important;
+    }
+
+    .badge-primary {
+        background-color: #007bff !important;
+        color: #fff !important;
+    }
+
+    .badge-warning {
+        background-color: #ffc107 !important;
+        color: #000 !important;
+    }
+
+    /* Asegurar colores de texto correctos */
+    .text-gray-800 {
+        color: #5a5c69 !important;
+    }
+
+    .text-gray-300 {
+        color: #dddfeb !important;
     }
 </style>
 {% endblock %}
