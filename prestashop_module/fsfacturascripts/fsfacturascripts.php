@@ -32,6 +32,34 @@ class FsFacturaScripts extends Module
         $this->displayName = $this->l('FacturaScripts Integration v3');
         $this->description = $this->l('Integración con FacturaScripts usando API REST: webhooks + consulta de facturas.');
         $this->confirmUninstall = $this->l('¿Estás seguro de que quieres desinstalar este módulo?');
+
+        // Verificar y actualizar esquema de BD al cargar el módulo
+        $this->checkAndUpdateSchema();
+    }
+
+    /**
+     * Verificar y actualizar esquema de base de datos
+     * Se ejecuta cada vez que se carga el módulo
+     */
+    private function checkAndUpdateSchema()
+    {
+        // Verificar si la tabla existe
+        $tableExists = Db::getInstance()->executeS(
+            "SHOW TABLES LIKE '" . _DB_PREFIX_ . "fs_facturascripts'"
+        );
+
+        if ($tableExists) {
+            // Añadir columna fs_factura_fecha si no existe
+            $checkColumn = Db::getInstance()->executeS(
+                "SHOW COLUMNS FROM `" . _DB_PREFIX_ . "fs_facturascripts` LIKE 'fs_factura_fecha'"
+            );
+            if (!$checkColumn) {
+                Db::getInstance()->execute(
+                    "ALTER TABLE `" . _DB_PREFIX_ . "fs_facturascripts`
+                    ADD COLUMN `fs_factura_fecha` DATE DEFAULT NULL AFTER `fs_factura_code`"
+                );
+            }
+        }
     }
 
     public function install()
@@ -54,7 +82,8 @@ class FsFacturaScripts extends Module
         return $this->registerHook('actionOrderStatusPostUpdate') &&
                $this->registerHook('actionValidateOrder') &&
                $this->registerHook('displayOrderDetail') &&
-               $this->registerHook('displayCustomerAccount');
+               $this->registerHook('displayCustomerAccount') &&
+               $this->registerHook('actionCronJob');
     }
 
     public function uninstall()
@@ -200,6 +229,10 @@ class FsFacturaScripts extends Module
             Configuration::updateValue('FS_API_KEY', Tools::getValue('FS_API_KEY'));
             Configuration::updateValue('FS_PDF_FORMAT', (int)Tools::getValue('FS_PDF_FORMAT'));
 
+            // CRON
+            Configuration::updateValue('FS_CRON_ENABLED', (int)Tools::getValue('FS_CRON_ENABLED'));
+            Configuration::updateValue('FS_CRON_INTERVAL', (int)Tools::getValue('FS_CRON_INTERVAL', 10));
+
             $output .= $this->displayConfirmation($this->l('Configuración guardada'));
         }
 
@@ -292,6 +325,47 @@ class FsFacturaScripts extends Module
                         'name' => 'FS_PDF_FORMAT',
                         'desc' => $this->l('ID del formato de impresión (0 = formato por defecto)'),
                         'size' => 10
+                    ],
+
+                    // SECCIÓN 3: CRON (sincronización automática)
+                    [
+                        'type' => 'html',
+                        'name' => 'cron_section',
+                        'html_content' => '<hr><h3>⏱️ CRON (Sincronización automática)</h3>'
+                    ],
+                    [
+                        'type' => 'switch',
+                        'label' => $this->l('Activar sincronización automática'),
+                        'name' => 'FS_CRON_ENABLED',
+                        'desc' => $this->l('Sincronizar facturas automáticamente cada X minutos (requiere módulo cronjobs o cron del sistema)'),
+                        'is_bool' => true,
+                        'values' => [
+                            ['id' => 'cron_on', 'value' => 1, 'label' => $this->l('Sí')],
+                            ['id' => 'cron_off', 'value' => 0, 'label' => $this->l('No')]
+                        ]
+                    ],
+                    [
+                        'type' => 'text',
+                        'label' => $this->l('Intervalo de sincronización (minutos)'),
+                        'name' => 'FS_CRON_INTERVAL',
+                        'desc' => $this->l('Cada cuántos minutos sincronizar (recomendado: 10)'),
+                        'size' => 10
+                    ],
+                    [
+                        'type' => 'html',
+                        'name' => 'cron_info',
+                        'html_content' => '<div class="alert alert-info">
+                            <strong>ℹ️ Última sincronización CRON:</strong> ' .
+                            (Configuration::get('FS_LAST_CRON_SYNC') ?: 'Nunca') . '<br><br>
+                            <strong>Opciones de configuración:</strong><br>
+                            <strong>1. Usando módulo cronjobs de PrestaShop:</strong><br>
+                            <small>Instala el módulo "cronjobs" oficial y se ejecutará automáticamente</small><br><br>
+                            <strong>2. Usando crontab del sistema (PHP CLI):</strong><br>
+                            <code>*/10 * * * * php ' . _PS_MODULE_DIR_ . 'fsfacturascripts/cron.php</code><br><br>
+                            <strong>3. Usando crontab con wget:</strong><br>
+                            <code>*/10 * * * * wget -q -O- "' . _PS_BASE_URL_ . __PS_BASE_URI__ . 'modules/fsfacturascripts/cron.php?token=facturascripts_cron_2025" > /dev/null 2>&1</code><br>
+                            <small style="color: red;">⚠️ IMPORTANTE: Cambia el token en cron.php por uno seguro antes de usar wget</small>
+                        </div>'
                     ]
                 ],
                 'submit' => [
@@ -340,7 +414,10 @@ class FsFacturaScripts extends Module
                 'FS_API_ENABLED' => Configuration::get('FS_API_ENABLED'),
                 'FS_API_URL' => Configuration::get('FS_API_URL'),
                 'FS_API_KEY' => Configuration::get('FS_API_KEY'),
-                'FS_PDF_FORMAT' => Configuration::get('FS_PDF_FORMAT', 0)
+                'FS_PDF_FORMAT' => Configuration::get('FS_PDF_FORMAT', 0),
+                // CRON
+                'FS_CRON_ENABLED' => Configuration::get('FS_CRON_ENABLED'),
+                'FS_CRON_INTERVAL' => Configuration::get('FS_CRON_INTERVAL', 10)
             ],
             'languages' => $this->context->controller->getLanguages(),
             'id_language' => $this->context->language->id
@@ -513,6 +590,46 @@ class FsFacturaScripts extends Module
 
         $order = new Order($params['id_order']);
         $this->sendWebhookToFacturaScripts($order);
+    }
+
+    /**
+     * Hook para CRON: Sincronización automática cada X minutos
+     * Compatible con módulo "cronjobs" de PrestaShop
+     */
+    public function hookActionCronJob()
+    {
+        // Solo ejecutar si está activado
+        if (!Configuration::get('FS_CRON_ENABLED')) {
+            return;
+        }
+
+        // Verificar intervalo (en minutos)
+        $interval = (int)Configuration::get('FS_CRON_INTERVAL', 10);
+        $last_sync = Configuration::get('FS_LAST_CRON_SYNC');
+
+        if ($last_sync) {
+            $time_diff = (time() - strtotime($last_sync)) / 60; // Diferencia en minutos
+            if ($time_diff < $interval) {
+                return; // Aún no toca sincronizar
+            }
+        }
+
+        // Ejecutar sincronización
+        $result = $this->syncOrdersFromAPI();
+
+        // Guardar timestamp de última sincronización
+        Configuration::updateValue('FS_LAST_CRON_SYNC', date('Y-m-d H:i:s'));
+
+        // Log del resultado
+        PrestaShopLogger::addLog(
+            'FacturaScripts CRON: Sincronización completada - ' .
+            (is_array($result) && isset($result['error']) ? $result['error'] : "{$result} facturas sincronizadas"),
+            is_array($result) && isset($result['error']) ? 2 : 1,
+            null,
+            'Module',
+            0,
+            true
+        );
     }
 
     private function sendWebhookToFacturaScripts($order)
